@@ -208,3 +208,4 @@ __marimo__/
 
 # Battlecode
 *.replay26replay.replay26
+.DS_Store
