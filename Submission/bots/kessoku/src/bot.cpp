@@ -199,12 +199,13 @@ std::optional<bc::item_type> Bot::next_item() const {
     std::vector<Step> plan;
     if (kind == bc::champion_type::vesper_vale)
         plan.push_back({I::treasure_shard_of_strength, I::treasure_emblem_of_strength});
-    if (focus) {
-        plan.push_back({I::monster_shard_of_focus, I::monster_emblem_of_focus});
-        plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
-    } else {
-        plan.push_back({I::monster_shard_of_strength, I::monster_emblem_of_strength});
-        plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
+    if (focus) plan.push_back({I::monster_shard_of_focus, I::monster_emblem_of_focus});
+    else plan.push_back({I::monster_shard_of_strength, I::monster_emblem_of_strength});
+    plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
+    // Tavi shops anywhere, so he rarely recalls: Home is wasted on him.
+    if (Cfg::HOME_SLOT >= 0 && kind != bc::champion_type::tavi) {
+        const auto at = std::min<std::size_t>(plan.size(), static_cast<std::size_t>(Cfg::HOME_SLOT) + (plan.size() > 2 ? 1 : 0));
+        plan.insert(plan.begin() + static_cast<std::ptrdiff_t>(at), Step{I::home_shard_of_health, I::home_emblem_of_health});
     }
     const auto owned = bc::self().item_count();
     for (const auto& s : plan)
@@ -339,6 +340,12 @@ void Bot::estimate_dps() {
     }
     if (has_passive(bc::passive_type::splash_attack)) multi += str * 0.6f;
     if (has_passive(bc::passive_type::reset_cooldowns_on_kill)) single *= 1.1f, multi *= 1.1f;
+
+    using I = bc::item_type;
+    const auto owned = me.item_count();
+    has_monster = owned[I::monster_emblem_of_strength] + owned[I::monster_emblem_of_focus] + owned[I::monster_emblem_of_health] > 0;
+    has_jungle = owned[I::jungle_emblem_of_strength] + owned[I::jungle_emblem_of_focus] + owned[I::jungle_emblem_of_health] > 0;
+    if (has_monster) single *= Cfg::MONSTER_BONUS, multi *= Cfg::MONSTER_BONUS;
     dps_single = std::max(single, 1.f);
     dps_multi = std::max(multi, 1.f);
 }
@@ -361,10 +368,19 @@ int Bot::claims_on(int id) const {
 // Incoming damage scales with 1 / (1 + helpers), so solve for helpers directly.
 int Bot::required_helpers(const Group& g) const {
     if (g.strength <= 0.f) return 0;
+    const float taken = has_jungle ? Cfg::JUNGLE_TAKEN : 1.f;
+    const float hp = group_hp(static_cast<int>(&g - groups.data()));
+    if (g.monolith) {
+        // Pooled: (1 + h) bodies each absorb a share of their health, and the
+        // fight is (1 + h) times shorter, so (1 + h)^2 >= total / pool.
+        const float pool = Cfg::MONOLITH_POOL_SHARE * my_max;
+        const float total = g.strength * taken * hp / my_dps(g);
+        const int h = std::max(0, static_cast<int>(std::ceil(std::sqrt(total / pool))) - 1);
+        return h < bodies && h <= Cfg::MONOLITH_MAX_NEED ? h : -1;
+    }
     const float allowance = my_hp - Cfg::FIGHT_HP_MARGIN * my_max;
     if (allowance <= 0.f) return -1;
-    const float hp = group_hp(static_cast<int>(&g - groups.data()));
-    const float solo = g.strength * (g.camp_count > 1 ? 0.65f : 1.f) * hp / my_dps(g);
+    const float solo = g.strength * taken * (g.camp_count > 1 ? 0.65f : 1.f) * hp / my_dps(g);
     const int h = std::max(0, static_cast<int>(std::ceil(solo / allowance)) - 1);
     return h < bodies ? h : -1;
 }
@@ -381,7 +397,9 @@ int Bot::allies_near(const Group& g) const {
 
 float Bot::group_score(int id, int dist, int* req_out) const {
     const auto& g = groups[static_cast<std::size_t>(id)];
-    if (g.monolith || round < g.skip_until) return -1.f;
+    if (round < g.skip_until || (g.monolith && !Cfg::MONOLITH_FIGHTS)) return -1.f;
+    // Monolith fights get long and a camp kill destroys the bag: go in empty-handed.
+    if (g.monolith && bc::self().gem_count() > static_cast<unsigned>(Cfg::MONOLITH_MAX_BAG)) return -1.f;
     if (g.respawn_at > round + dist) return -1.f;
     const int req = g.reward ? 0 : required_helpers(g);
     if (req < 0) return -1.f;
@@ -440,7 +458,7 @@ int Bot::choose_target() {
             const int c = claims_on(id);
             if (id == best || c <= join_claims || here.get(groups[i].tiles.front()) >= UNREACH) continue;
             const int req = required_helpers(groups[i]);
-            if (req < 0 || groups[i].monolith || groups[i].respawn_at > round) continue;
+            if (req < 0 || groups[i].respawn_at > round) continue;
             join = id, join_claims = c, join_req = req;
         }
         if (join >= 0) {
@@ -1099,6 +1117,11 @@ void Bot::play_turn() {
         const auto f = bc::fuel_remaining();
         if (round > 1 && f < low) low = f, std::cout << "FUEL R" << round << " " << bc::to_string(kind) << " left=" << f << "\n";
     }
+    if (target >= 0 && groups[static_cast<std::size_t>(target)].monolith && round % 5 == 0)
+        std::cout << "MONO R" << round << " " << bc::to_string(kind) << " tgt=" << target << " need=" << need
+                  << " near=" << allies_near(groups[static_cast<std::size_t>(target)]) << " mhp=" << group_hp(target)
+                  << " hp=" << my_hp << "/" << my_max << " gems=" << me.gem_count() << " dps=" << dps_single
+                  << " d=" << cheb(pos, groups[static_cast<std::size_t>(target)].tiles.front()) << "\n";
     if (round % 25 == 0) {
         std::cout << "R" << round << " " << bc::to_string(kind) << " body=" << body << " pos=" << pos.x << "," << pos.y
                   << " hp=" << me.health() << " gems=" << me.gem_count() << " gold=" << me.gold_count() << " tgt=" << target

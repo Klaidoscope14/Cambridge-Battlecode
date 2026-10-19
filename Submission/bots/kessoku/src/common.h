@@ -48,6 +48,24 @@ inline constexpr float OUTMATCHED = 1.25f;     // enemy fight power over ours th
 inline constexpr int SKIRMISH_RANGE = 7;       // champions this close take part in a fight
 inline constexpr int THREAT_BANK_BAG = 10;     // bank this early when outmatched
 inline constexpr int THREAT_BANK_RANGE = 8;
+// Emblems: Monster = +10% camp damage, Jungle = -30% camp damage taken,
+// Home = recall 5 -> 3 turn ends. HOME_SLOT is Home's place in the build (-1 skips it).
+// Measured 2026-10-19 (mirror vs previous build, 18 games): Monster bonus in the
+// damage estimate 10/18; also counting Jungle (0.70) made fights riskier (0 -> 8
+// deaths vs starter-cpp); Home after Monster 7/18, after Jungle 6/18 - this bot
+// rarely recalls, so the 150 gold is worth more as stats.
+inline constexpr float MONSTER_BONUS = 1.10f;
+inline constexpr float JUNGLE_TAKEN = 1.00f;
+inline constexpr int HOME_SLOT = -1;
+// Monoliths: the monolith hits the nearest champion and hurt champions step out,
+// so a squad pools its health. Each body spends this share before rotating out.
+// Off: with 4-5 of 6 bodies needed, gathering stalls the economy (monolith map
+// 586 vs 1018) and monoliths regenerate after aborted attempts. Worth revisiting
+// for long ladder games where regular camps run dry.
+inline constexpr bool MONOLITH_FIGHTS = false;
+inline constexpr float MONOLITH_POOL_SHARE = 0.60f;
+inline constexpr int MONOLITH_MAX_BAG = 10;  // bank before joining a monolith fight
+inline constexpr int MONOLITH_MAX_NEED = 2;  // never tie up more helpers than this (monoliths regenerate)
 // Shopping.
 inline constexpr int SHOP_TRIP_GOLD = 150;
 inline constexpr int RECALL_SHOP_GOLD = 270;

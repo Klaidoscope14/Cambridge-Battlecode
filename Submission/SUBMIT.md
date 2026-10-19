@@ -12,7 +12,7 @@ Run from inside `Submission/`:
 cambc build kessoku --release                                   # same mode as the platform
 cambc run kessoku starter-cpp --map maps/lanes.map26a --view    # watch a match
 cambc run kessoku starter-python --map maps/rows.map26a         # other starter opponent
-cambc bundle kessoku --output ../kessoku.zip                    # refresh the root zip
+rm -f ../kessoku.zip && cambc bundle kessoku --output ../kessoku.zip   # bundle never overwrites
 ```
 Maps: collision, corners, elkring, expanse, interlock, lanes, monolith, packs, rows.
 Each team's stdout is inside the replay bundle (`.repl26a` is a zip: `team-a.stdout`, `team-b.stdout`).

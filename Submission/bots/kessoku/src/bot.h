@@ -64,6 +64,7 @@ class Bot {
     bool acted_attack = false;
     float dps_single = 1.f, dps_multi = 1.f;  // this turn's camp damage estimates
     float my_hp = 0.f, my_max = 1.f;
+    bool has_monster = false, has_jungle = false;  // camp-fighting emblem passives owned
     std::vector<float> live_hp;     // visible living camp health per group, -1 if unseen
     std::vector<vec2> enemy_pos;
     std::vector<Foe> foes;
