@@ -15,6 +15,8 @@ from config import CFG
 import objective as O
 import economy
 import champions
+import comms
+import plan
 from mapinfo import map_info
 
 
@@ -33,10 +35,33 @@ def _role_mult(role, kind):
     return table.get(role, {}).get(kind, 1.0)
 
 
-def _best_farm(wv):
+def _strategy_mult(strategy, kind):
+    """Small, explicit use of the opening plan written during the draft."""
+    table = {
+        plan.STRAT_TEMPO: {
+            O.FARM: 1.15, O.BANK: 1.15, O.GANK: 0.90, O.DEFEND: 0.85,
+        },
+        plan.STRAT_CONTROL: {
+            O.FARM: 0.95, O.BANK: 1.12, O.GANK: 1.12, O.DEFEND: 1.30,
+        },
+        plan.STRAT_SKIRMISH: {
+            O.FARM: 0.92, O.BANK: 1.00, O.GANK: 1.28, O.DEFEND: 1.24,
+        },
+    }
+    return table.get(strategy, {}).get(kind, 1.0)
+
+
+def _best_farm(wv, lane_slot=0, lane_count=1):
+    """Choose a profitable camp while spreading the initial team over lanes.
+
+    Camp ownership is static map information; camp state and nearby allies are
+    live information.  The latter prevents three bodies walking to one capture
+    tile, where extra bodies neither shorten the capture nor increase reward.
+    """
     mi = map_info()
-    best, best_score, best_target = None, 0.0, None
-    for ci in mi.camps:
+    best_score, best_target = 0.0, None
+    lane_count = max(1, lane_count)
+    for index, ci in enumerate(mi.camps):
         try:
             st = ci.group.state()
             if isinstance(st, game_map.CampGroupRespawning):
@@ -45,18 +70,35 @@ def _best_farm(wv):
             pass
         if ci.gem_value <= 0 and ci.gold_value <= 0:
             continue
+        # Gem clusters yield the same strategic resource without retaliation.
+        # Make them the default lane target; wolves/elk remain the fallback
+        # after the safe map economy is exhausted.
+        if ci.tanky:
+            continue
         d = wv.pos.chebyshev_distance(ci.centroid)
         value = ci.gem_value * 1.0 + ci.gold_value * 0.12
         # Gems per clear-effort: low-HP gem clusters win over tanky wolves/elk.
         effort = ci.total_hp / 200.0 + d / 3.0 + 3.0
         own_bonus = 1.15 if ci.owner <= 0 else 0.9
-        score = own_bonus * value / effort
+        desired_lane = index % lane_count
+        lane_mult = CFG.FARM_LANE_BONUS if desired_lane == lane_slot else CFG.FARM_LANE_OFF_PENALTY
+        ally_crowd = 0
+        for ally in wv.allies:
+            try:
+                if ally.position().chebyshev_distance(ci.centroid) <= 3:
+                    ally_crowd += 1
+            except Exception:
+                continue
+        crowd_mult = 1.0 / (1.0 + CFG.FARM_ALLY_CROWD_PENALTY * ally_crowd)
+        safety_bonus = 1.9 if ci.harmless else 0.55
+        score = own_bonus * lane_mult * crowd_mult * safety_bonus * value / effort
         if score > best_score:
-            best_score, best, best_target = score, ci, ci.centroid
+            best_score, best_target = score, ci.centroid
     return best_score, best_target
 
 
-def enumerate_objectives(wv, belief, role):
+def enumerate_objectives(wv, belief, role, strategy=plan.STRAT_BALANCED,
+                         lane_slot=0, lane_count=1):
     out = []
 
     # Face-tank camps when EMPTY-handed (respawn heals full, camps don't
@@ -71,10 +113,17 @@ def enumerate_objectives(wv, belief, role):
         hp_farm_mult = 0.2
 
     # FARM
-    farm_score, farm_target = _best_farm(wv)
+    farm_score, farm_target = _best_farm(wv, lane_slot, lane_count)
     if farm_target is not None:
-        s = CFG.W_FARM * (0.2 + farm_score) * _role_mult(role, O.FARM) * hp_farm_mult
+        s = (CFG.W_FARM * (0.2 + farm_score) * _role_mult(role, O.FARM)
+             * _strategy_mult(strategy, O.FARM) * hp_farm_mult)
         out.append(O.Objective(O.FARM, farm_target, s))
+
+    # Capture ticks do not speed up with extra champions. A body already on a
+    # cleared camp must retain this job rather than being pulled to a nearby
+    # farm target by ordinary objective arbitration.
+    if _capture_here(wv):
+        out.append(O.Objective(O.CAPTURE, wv.pos, CFG.W_CAPTURE))
 
     # BANK. Carried gems are only worth anything once tributed and are lost on
     # death, so banking urgency climbs with the bag. EV pressure fine-tunes on
@@ -90,9 +139,23 @@ def enumerate_objectives(wv, belief, role):
             pressure = economy.bank_pressure(wv, belief) if CFG.USE_EV_BANKING else 0.0
         except Exception:
             pressure = 0.0
-        s = CFG.W_BANK * (bag_weight + 0.4 * _sigmoid(pressure)) * _role_mult(role, O.BANK)
-        altar = map_info().nearest_safe_altar(wv.pos)
-        out.append(O.Objective(O.BANK, altar, s))
+        s = (CFG.W_BANK * (bag_weight + 0.4 * _sigmoid(pressure))
+             * _role_mult(role, O.BANK) * _strategy_mult(strategy, O.BANK))
+        # A full camp payout should not lose to the capture/farm score while
+        # the champion is still standing in danger.  This is below the hard
+        # emergency ceiling but decisively wins normal arbitration.
+        # Sparse-altar maps turn a 22+ gem bag into a long exposed return
+        # trip.  Dense-altar maps can keep farming efficiently and bank on
+        # ordinary EV pressure instead.
+        if CFG.BANK_CONTINUOUS:
+            s = max(s, CFG.W_BANK * 3.0)
+        elif (wv.gems >= CFG.BANK_EARLY_BAG
+                and len(map_info().altars) <= CFG.EARLY_BANK_ALTAR_LIMIT):
+            s = max(s, CFG.W_BANK * 3.0)
+        # Tactical execution ranks *all* altars with current locks/enemy
+        # vision.  Keeping this target unset avoids committing to an altar
+        # that became locked after static map analysis.
+        out.append(O.Objective(O.BANK, None, s))
 
     # GANK
     if CFG.USE_GANKING:
@@ -101,17 +164,40 @@ def enumerate_objectives(wv, belief, role):
             e, epos, egems, ehp = tgt
             d = wv.pos.chebyshev_distance(epos)
             val = (egems + (1.0 - ehp) * 25.0) / (d + 2.0)
-            s = CFG.W_GANK * _sigmoid(val - 1.0) * _role_mult(role, O.GANK)
+            s = (CFG.W_GANK * _sigmoid(val - 1.0) * _role_mult(role, O.GANK)
+                 * _strategy_mult(strategy, O.GANK))
             out.append(O.Objective(O.GANK, epos, s))
 
     # DEFEND: an ally carrier with an enemy nearby
     dtar = _defend_target(wv, belief)
     if dtar is not None:
-        s = CFG.W_DEFEND * _role_mult(role, O.DEFEND)
+        s = CFG.W_DEFEND * _role_mult(role, O.DEFEND) * _strategy_mult(strategy, O.DEFEND)
         out.append(O.Objective(O.DEFEND, dtar, s))
 
+    # A fresh shared-memory signal is more valuable than a vague inferred
+    # target: it is a concrete place where a teammate has current vision.
+    hints = comms.read_hints(wv)
+    if hints["enemy_carrier"] is not None:
+        out.append(O.Objective(
+            O.GANK, hints["enemy_carrier"],
+            CFG.W_GANK * 1.35 * _role_mult(role, O.GANK) * _strategy_mult(strategy, O.GANK),
+        ))
+    if hints["enemy_contact"] is not None:
+        contact = hints["enemy_contact"]
+        if wv.pos.chebyshev_distance(contact) <= CFG.RALLY_MAX_DISTANCE:
+            out.append(O.Objective(
+                O.GANK, contact,
+                CFG.W_GANK * CFG.RALLY_SCORE_MULTIPLIER
+                * _role_mult(role, O.GANK) * _strategy_mult(strategy, O.GANK),
+            ))
+    if hints["help"] is not None and hints["help"] != wv.pos:
+        out.append(O.Objective(
+            O.DEFEND, hints["help"],
+            CFG.W_DEFEND * 1.30 * _role_mult(role, O.DEFEND) * _strategy_mult(strategy, O.DEFEND),
+        ))
+
     # SHOP
-    if map_info().ally_spawn.is_set(wv.pos) and wv.gold >= 30:
+    if economy.should_shop(wv, role):
         out.append(O.Objective(O.SHOP, None, CFG.W_SHOP))
 
     # WARD
@@ -144,6 +230,27 @@ def _defend_target(wv, belief):
             except Exception:
                 continue
     return None
+
+
+def _capture_here(wv):
+    from cambc import game_map
+    for group in game_map.camp_groups():
+        try:
+            tiles = group.spawn_tiles()
+            if not (tiles.is_set(wv.pos)
+                    and isinstance(group.state(), game_map.CampGroupRewardAvailable)):
+                continue
+            occupants = [wv.me]
+            for ally in wv.allies:
+                try:
+                    if tiles.is_set(ally.position()):
+                        occupants.append(ally)
+                except Exception:
+                    continue
+            return int(wv.me) == min(int(champion) for champion in occupants)
+        except Exception:
+            continue
+    return False
 
 
 def _can_ward(wv):

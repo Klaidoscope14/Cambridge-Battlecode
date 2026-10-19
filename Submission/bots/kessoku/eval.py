@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 ALL_MAPS = ["collision", "corners", "elkring", "expanse", "interlock",
@@ -37,8 +36,6 @@ def run_match(a, b, map_path, stats_path):
 def team_gems(stats, team_index):
     # sum tributed gems across the team's champions
     try:
-        champs = stats["champions"]
-        # champions list carries a team marker; fall back to summary if present
         if "teams" in stats:
             return stats["teams"][team_index].get("submittedGems", 0)
     except Exception:

@@ -8,7 +8,6 @@ inferred position as a current observation — callers read `.confidence`.
 """
 from __future__ import annotations
 
-import cambc
 from cambc import Bitboard, Vec2
 
 from config import CFG
@@ -138,24 +137,6 @@ class Belief:
                 d = wv.pos.chebyshev_distance(e.position())
                 if d < best_d:
                     best_d, best = d, e.position()
-            except Exception:
-                continue
-        return best
-
-    def nearest_threat_pos(self, wv):
-        best, best_d = None, 1 << 30
-        for e in wv.enemies:
-            try:
-                d = wv.pos.chebyshev_distance(e.position())
-                if d < best_d:
-                    best_d, best = d, e.position()
-            except Exception:
-                continue
-        for c in wv.camps:
-            try:
-                d = wv.pos.chebyshev_distance(c.position())
-                if d < best_d:
-                    best_d, best = d, c.position()
             except Exception:
                 continue
         return best

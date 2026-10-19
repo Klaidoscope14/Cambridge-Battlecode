@@ -24,7 +24,9 @@ class _Config:
 
     # ---- fuel budget ------------------------------------------------------
     FUEL_SOFT_FLOOR = 8000         # below this, skip optional planning
+    FUEL_PATH_COMPUTE_FLOOR = 12000  # do not build a fresh BFS cache below this
     FUEL_HARD_FLOOR = 2500         # below this, bail out of the turn
+    PATH_FIELD_CACHE_SIZE = 12     # per-bot static-goal DistanceField cache
 
     # ---- banking EV policy (point 1) --------------------------------------
     # Expected value of continuing to farm vs banking now. Values are in
@@ -41,8 +43,17 @@ class _Config:
     # Travel/channel cost: banking isn't free; each round away from farming
     # costs expected farm value.
     BANK_TRAVEL_PENALTY_PER_TILE = 0.02
+    BANK_ALTAR_DANGER_PENALTY = 12.0
+    BANK_LOCKED_ALTAR_PENALTY = 8.0
     # Hard bag ceiling: above this always try to bank regardless of EV.
     BAG_PANIC_CEILING = 60
+    # Camp rewards arrive in sizeable chunks.  Convert one promptly rather
+    # than asking a carrier to cross a contested map holding two rewards.
+    BANK_EARLY_BAG = 12
+    EARLY_BANK_ALTAR_LIMIT = 4
+    # Every camp payout is score only after it finishes a tribute channel.
+    # Keep carriers on the bank objective until their bag is empty.
+    BANK_CONTINUOUS = True
     # Endgame: if tributing this bag would win (reach WINNING_GEMS), always go.
     ENDGAME_FORCE_BANK = True
 
@@ -50,6 +61,12 @@ class _Config:
     RECALL_HP_FRACTION = 0.30      # recall when below this and unsafe
     RECALL_HP_FRACTION_SAFE = 0.15 # recall even if nominally safe below this
     RECALL_IF_RICH_GOLD = 150      # recall to spend a big gold stack
+    SHOP_GOLD_TRIGGER = 30
+    # An altar lock blocks *all* submissions at that altar, including ours.
+    # Do not spend early farm gold on them until a team-level timing policy can
+    # prove that interrupting the enemy outweighs delaying friendly banking.
+    BUY_LOCKS = False
+    ALTAR_LOCK_RANGE = 2
 
     # ---- objective arbitration (point 2) ----------------------------------
     # Hysteresis: keep the current objective unless a challenger beats it by
@@ -65,7 +82,7 @@ class _Config:
     W_GANK = 8.0
     W_DEFEND = 7.5
     W_WARD = 2.0
-    W_SHOP = 3.0
+    W_SHOP = 12.0
     W_EXPLORE = 1.0
 
     # ---- combat / micro (point 6) -----------------------------------------
@@ -73,8 +90,8 @@ class _Config:
     # Only kite if we can still contribute damage soon; kiting a melee-range
     # camp as a ranged champ trades an attack for safety.
     KITE_HP_FRACTION = 0.6         # kite (reposition) below this HP vs camps
+    CAMP_FIGHT_SAFETY_MARGIN = 1.15
     STUN_SAVE_FOR_PVP = True       # prefer saving CC for champions over camps
-    FOCUS_TARGET_LOWEST_HP = True  # last-hit / focus fire
 
     # ---- draft scoring (point 4) ------------------------------------------
     # Weights on champion scoring features; priors, meant to be learned.
@@ -90,7 +107,12 @@ class _Config:
 
     # ---- geometry (point 3) -----------------------------------------------
     MAX_FIELD_DISTANCE = 255       # DistanceField cap
-    SAFE_ALTAR_MAX_ENEMY_ACCESS = 1  # altars with <= this enemy reach are "safe"
+    SAFE_ALTAR_MAX_ENEMY_ACCESS = 1  # minimum ally arrival advantage to call an altar safe
+    FARM_LANE_BONUS = 1.25
+    FARM_LANE_OFF_PENALTY = 0.72
+    FARM_ALLY_CROWD_PENALTY = 0.55
+    FARM_ALLY_EXCLUSION_RADIUS = 2
+    FARM_DECONFLICT_MAX_TEAM_SIZE = 3
 
     # ---- belief / fog (point 5,8) -----------------------------------------
     ENEMY_POSITION_DECAY = 0.85    # confidence multiplier per round unseen
@@ -106,6 +128,9 @@ class _Config:
     SM_ENEMY_CARRIER_Y = 5         # u8
     SM_FLAGS = 6                   # u8 bitfield: bit0 = racing-to-win
     SM_RESERVED = 7
+    SM_FLAG_CONTACT = 0x02         # enemy seen: coordinates are a rally point
+    RALLY_MAX_DISTANCE = 18
+    RALLY_SCORE_MULTIPLIER = 1.75
 
 
 CFG = _Config()

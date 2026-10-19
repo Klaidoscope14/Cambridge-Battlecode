@@ -43,6 +43,11 @@ knob board for point 7.
 
 ## Current status (measured, vs starter-python, full matches)
 
+> The measurements below are the pre-hardening baseline. The current source
+> now caches static path fields, assigns lightweight farm lanes, clears enemy
+> altar locks, uses legal shops/locks, and records real death/bank telemetry.
+> Re-run the pool before treating any old number as the new expected result.
+
 Tributed gems (ours vs starter needs 1000); **W = we won**:
 
 | map | ours | | map | ours |
@@ -53,12 +58,9 @@ Tributed gems (ours vs starter needs 1000); **W = we won**:
 | expanse | 838 | | corners | 116 |
 | | | | rows | 0–418 (fuel-marginal) |
 
-**Caveat:** `lanes` and `rows` are **fuel-marginal** — the per-turn
-`DistanceField` recompute sits near the fuel ceiling on big maps, so different
-*builds* of identical source flip the outcome (lanes sometimes wins ~1020,
-sometimes loses ~860; rows 0–418). interlock is the one robust win. Fixing the
-per-turn fuel cost (incremental/cached BFS) would make results stable AND
-better — the single highest-value next task.
+**Caveat:** `lanes` and `rows` were **fuel-marginal** in this baseline because
+the bot rebuilt a `DistanceField` every walking turn. The source now has a
+static-goal cache with a low-fuel fallback; validate it on these maps first.
 
 - **Correctness:** builds to WASM; **0 crashes / 0 bot errors**; plays all 9
   maps, both sides. From the first version (lost every map, 66–198 gems) to
@@ -95,6 +97,9 @@ better — the single highest-value next task.
   treks. A good lesson in testing the hypothesis — nearest-camp routing wins.
   (The optimal Hungarian/min-cost-flow would still assign, so wouldn't fix the
   underlying "spreading is bad here" issue.)
+- **Current compromise:** deterministic lane preference plus a live
+  occupied-camp penalty. It prevents pointless capture dogpiles without the
+  long detours that made full matching lose.
 - **Fuel/complexity budgeting + incremental BFS/caching:** the rows stall is a
   per-turn big-O problem; compute static fields once, update incrementally.
 - **Winnable-fight = greedy feasibility/simulation** (already added): turns-to-

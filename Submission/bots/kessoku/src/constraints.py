@@ -6,27 +6,10 @@ selection should run. Also reports whether we can act at all this turn.
 """
 from __future__ import annotations
 
-import cambc
-
 import objective as O
 import economy
 from config import CFG
 from mapinfo import map_info
-
-
-def _submit_range():
-    try:
-        return cambc.constants.SUBMIT_GEMS_RANGE
-    except Exception:
-        return 1
-
-
-def _locked(altar):
-    try:
-        return cambc.vision.has_altar_lock(altar)
-    except Exception:
-        return False
-
 
 def can_act(wv) -> bool:
     me = wv.me
@@ -48,6 +31,17 @@ def emergency(wv, belief):
     if economy.force_bank(wv):
         return O.Objective(O.BANK, score=1e6, emergency=True)
 
+    on_spawn = map_info().ally_spawn.is_set(wv.pos)
+    # Recall only heals while we remain in the spawn region.  The old bot
+    # immediately walked back out at low HP, throwing away the recall turn.
+    if on_spawn and wv.hp_frac() < 0.99:
+        return O.Objective(O.IDLE, score=1e5, emergency=True)
+
+    # Shop as soon as it is legal.  This includes Tavi's field shop; can_buy
+    # validates that special case instead of guessing from position.
+    if economy.should_shop(wv):
+        return O.Objective(O.SHOP, score=9.5e4, emergency=True)
+
     # Survival. Only CARRIED GEMS are worth protecting: dying empty-handed
     # just respawns us at full HP (a free heal) and camps don't chase, so
     # fleeing while empty is wasted farm uptime. Therefore:
@@ -56,7 +50,6 @@ def emergency(wv, belief):
     #   - empty + about to be killed by an enemy CHAMPION -> brief flee (a
     #                          pointless death also donates 50 gold), else tank.
     low = wv.hp_frac()
-    on_spawn = map_info().ally_spawn.is_set(wv.pos)
     carrying = wv.gems > 0
     champ_threat = belief.champion_threat(wv)
     threatened = champ_threat or belief.immediate_threat(wv)

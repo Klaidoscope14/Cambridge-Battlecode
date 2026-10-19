@@ -13,7 +13,7 @@ from cambc import Team
 class WorldView:
     __slots__ = ("round", "me", "pos", "hp", "max_hp", "gems", "gold",
                  "allies", "enemies", "camps", "visible",
-                 "ally_locks", "enemy_locks")
+                 "enemy_locks")
 
     def __init__(self):
         self.round = cambc.round_number()
@@ -35,7 +35,6 @@ class WorldView:
         self.enemies = list(cambc.vision.champions(Team.ENEMY))
         self.camps = list(cambc.vision.camps())
 
-        self.ally_locks = cambc.vision.altar_locks(Team.ALLY)
         self.enemy_locks = cambc.vision.altar_locks(Team.ENEMY)
 
     def hp_frac(self) -> float:

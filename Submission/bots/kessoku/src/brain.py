@@ -14,6 +14,7 @@ import objectives
 import tactics
 import comms
 import champions
+import plan
 from belief import Belief
 from world import WorldView
 from metrics import Metrics
@@ -27,6 +28,10 @@ class Bot:
         self.current = None          # committed Objective
         self.rounds_on = 0
         self.role = None
+        self.strategy = plan.STRAT_BALANCED
+        self.lane_slot = 0
+        self.lane_count = 1
+        self._opening_loaded = False
 
     def _ensure_role(self, wv):
         if self.role is None:
@@ -34,6 +39,37 @@ class Bot:
                 self.role = champions.role_for_type(wv.me.champion_name())
             except Exception:
                 self.role = champions.ROLE_CARRY
+
+    def _ensure_opening(self):
+        """Read draft memory once.  It is immutable during gameplay, so this
+        costs nothing on normal turns and makes the draft's map posture real."""
+        if self._opening_loaded:
+            return
+        self._opening_loaded = True
+        try:
+            _picks, self.strategy, _symmetry = plan.read()
+        except Exception:
+            self.strategy = plan.STRAT_BALANCED
+
+    def _ensure_lane(self, wv):
+        """Assign a stable farm lane from the spawn-time champion handles.
+
+        Every teammate can make the same calculation while the whole spawn is
+        visible.  We keep the result after the team disperses, avoiding the
+        old behaviour where every bot chased the same nearest camp.
+        """
+        if self.lane_count > 1:
+            return
+        try:
+            team = [wv.me, *wv.allies]
+            handles = sorted(int(c) for c in team)
+            self.lane_count = max(1, len(handles), cambc.draft.team_size())
+            self.lane_slot = handles.index(int(wv.me)) if int(wv.me) in handles else 0
+        except Exception:
+            try:
+                self.lane_count = max(1, cambc.draft.team_size())
+            except Exception:
+                self.lane_count = 1
 
     def play_turn(self):
         # Low-fuel bail: don't start planning we can't finish.
@@ -45,15 +81,25 @@ class Bot:
 
         wv = WorldView()
         self._ensure_role(wv)
+        self._ensure_opening()
+        self._ensure_lane(wv)
 
         if not constraints.can_act(wv):
             # still track metrics (e.g., death) then yield
             self.metrics.observe(wv, self.current)
             return
 
-        if CFG.USE_BELIEF:
+        # Belief rebuilding and memory writes are optional value.  Preserve
+        # enough fuel for a move/tribute instead of turning a low-fuel turn
+        # into a no-op.
+        try:
+            low_fuel = cambc.fuel_remaining() < CFG.FUEL_SOFT_FLOOR
+        except Exception:
+            low_fuel = False
+        if CFG.USE_BELIEF and not low_fuel:
             self.belief.update(wv)
-        comms.publish(wv, self.belief)
+        if not low_fuel:
+            comms.publish(wv, self.belief)
 
         obj = self._choose(wv)
         tactics.execute(obj, wv, self.belief, self.role)
@@ -74,11 +120,17 @@ class Bot:
             return emg
 
         if not CFG.USE_LAYERED_DECISIONS:
-            cands = objectives.enumerate_objectives(wv, self.belief, self.role)
+            cands = objectives.enumerate_objectives(
+                wv, self.belief, self.role, self.strategy,
+                self.lane_slot, self.lane_count,
+            )
             self._commit(cands[0])
             return cands[0]
 
-        cands = objectives.enumerate_objectives(wv, self.belief, self.role)
+        cands = objectives.enumerate_objectives(
+            wv, self.belief, self.role, self.strategy,
+            self.lane_slot, self.lane_count,
+        )
         if not cands:
             idle = O.Objective(O.EXPLORE)
             self._commit(idle)

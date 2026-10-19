@@ -3,13 +3,10 @@
 Computed once (terrain is static), then queried cheaply. Turns raw masks
 into strategic features: travel distances from each spawn to every altar and
 camp group, which altars are ally-safe vs enemy-contested, camp-group farm
-ordering and ownership, and a terrain-content fingerprint that survives pool
-changes. Everything keys off DistanceField BFS around walls/holes, so
+ordering and ownership. Everything keys off DistanceField BFS around walls/holes, so
 "distance" means real reachable path length, never Chebyshev-through-walls.
 """
 from __future__ import annotations
-
-import hashlib
 
 import cambc
 from cambc import Bitboard, DistanceField, game_map
@@ -19,7 +16,7 @@ from config import CFG
 
 class CampInfo:
     __slots__ = ("group", "spawn_tiles", "centroid", "gem_value", "gold_value",
-                 "ally_dist", "enemy_dist", "owner", "total_hp")
+                 "ally_dist", "enemy_dist", "owner", "total_hp", "harmless", "tanky")
 
     def __init__(self, group):
         self.group = group
@@ -34,10 +31,14 @@ class CampInfo:
         # Clear effort ~ total group health (gem clusters are low-HP + safe,
         # wolves/elk/monoliths are tanky and dangerous).
         self.total_hp = 0.0
+        self.harmless = True
+        self.tanky = False
         try:
             for c in group.camps():
                 try:
                     self.total_hp += c.base_stats().base_health
+                    self.harmless = self.harmless and c.base_stats().base_strength <= 0
+                    self.tanky = self.tanky or c.is_monolith() or c.is_elk()
                 except Exception:
                     self.total_hp += 500.0
         except Exception:
@@ -83,7 +84,7 @@ class MapInfo:
             de = self._reach(self.enemy_field, a)
             self.altar_ally_dist[(a.x, a.y)] = da
             self.altar_enemy_dist[(a.x, a.y)] = de
-            if da <= de:
+            if da + CFG.SAFE_ALTAR_MAX_ENEMY_ACCESS <= de:
                 self.safe_altars.append(a)
         if not self.safe_altars:
             self.safe_altars = list(self.altars)
@@ -106,11 +107,6 @@ class MapInfo:
         self.bush_frac = self.bushes.count() / area
         self.wall_frac = self.walls.count() / area
         self.open_frac = 1.0 - self.wall_frac - self.holes.count() / area
-        self.altar_scarcity = 1.0 / max(1, len(self.altars))
-        self.total_gem_supply = sum(c.gem_value for c in self.camps)
-        self.our_gem_supply = sum(c.gem_value for c in self.camps if c.owner <= 0)
-
-        self.fingerprint = self._fingerprint()
 
     # ---- helpers ----------------------------------------------------------
     def _field_from(self, roots: Bitboard) -> DistanceField:
@@ -151,14 +147,6 @@ class MapInfo:
                 best = v
         return best
 
-    def _fingerprint(self) -> str:
-        h = hashlib.sha1()
-        for bb in (self.walls, self.holes, self.altars_bb, self.bushes,
-                   self.ally_spawn, self.enemy_spawn):
-            h.update(bb.export_linear_buffer())
-        h.update(bytes([self.team_size, int(self.symmetry)]))
-        return h.hexdigest()[:12]
-
     def nearest_altar(self, origin):
         best, best_d = None, 1 << 30
         for a in self.altars:
@@ -174,6 +162,16 @@ class MapInfo:
             if d < best_d:
                 best_d, best = d, a
         return best
+
+    def camp_for_centroid(self, centroid):
+        """Resolve a strategic camp target back to its static group."""
+        for camp in self.camps:
+            try:
+                if camp.centroid == centroid:
+                    return camp
+            except Exception:
+                continue
+        return None
 
 
 _MAP = None

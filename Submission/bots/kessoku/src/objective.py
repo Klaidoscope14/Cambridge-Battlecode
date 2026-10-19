@@ -4,6 +4,7 @@ from __future__ import annotations
 # kinds
 BANK = "bank"
 FARM = "farm"
+CAPTURE = "capture"
 GANK = "gank"
 DEFEND = "defend"
 RECALL = "recall"

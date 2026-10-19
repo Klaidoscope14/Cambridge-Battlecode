@@ -7,7 +7,6 @@ are guarded; use() may return False (newly revealed obstruction) or raise.
 """
 from __future__ import annotations
 
-import cambc
 from cambc import Vec2
 
 from config import CFG
@@ -101,9 +100,8 @@ def cast_on_enemy(wv, enemy) -> bool:
     return False
 
 
-def attack_best_enemy(wv) -> bool:
-    """Engage the most valuable in-range enemy champion (gank/defend)."""
-    me = wv.me
+def attack_best_enemy(wv, aggressive=False) -> bool:
+    """Engage an in-range enemy only when the objective warrants the trade."""
     targets = []
     for e in wv.enemies:
         try:
@@ -114,6 +112,20 @@ def attack_best_enemy(wv) -> bool:
             continue
     if not targets:
         return False
+    if not aggressive:
+        # A farming champion should not abandon gem throughput for an even
+        # poke. Only take a field fight that threatens a valuable bag or has
+        # a likely finish, and do not solo-engage it while already hurt.
+        valuable = any(gems >= 10 or hp <= 0.35 for _enemy, gems, hp in targets)
+        nearby_allies = 0
+        for ally in wv.allies:
+            try:
+                if ally.position().chebyshev_distance(wv.pos) <= CFG.THREAT_RADIUS:
+                    nearby_allies += 1
+            except Exception:
+                continue
+        if not valuable or (wv.hp_frac() < 0.50 and nearby_allies == 0):
+            return False
     # Prefer loaded, then low HP.
     targets.sort(key=lambda t: (-t[1], t[2]))
     for e, _gems, _hp in targets:
@@ -140,26 +152,56 @@ def winnable_camp(wv, camp) -> bool:
         return True
     if mystr <= 0:
         return False
-    helpers = 1
+    attackers = [(wv.me, mystr)]
     try:
         cpos = camp.position()
         for a in wv.allies:
             try:
-                if a.position().chebyshev_distance(cpos) <= 3:
-                    helpers += 1
+                if a.position().chebyshev_distance(cpos) <= a.attack_range():
+                    attackers.append((a, a.strength()))
             except Exception:
                 pass
     except Exception:
         pass
-    dps = mystr * helpers
+    dps = sum(max(0.0, strength) for _champion, strength in attackers)
+    if dps <= 0:
+        return False
     turns = chp / dps
-    incoming = cstr * turns / helpers      # kill faster AND spread damage with allies
-    return wv.hp > incoming * 0.9
+    # A hostile camp attacks the nearest champion; damage is not evenly split
+    # across every ally merely standing nearby. Helpers shorten time-to-kill,
+    # but only the nearest body must be able to absorb the full retaliation.
+    try:
+        my_distance = wv.pos.chebyshev_distance(cpos)
+        nearest_distance = min(champ.position().chebyshev_distance(cpos)
+                               for champ, _strength in attackers)
+    except Exception:
+        my_distance = nearest_distance = 0
+    incoming = cstr * turns if my_distance <= nearest_distance else cstr * turns * 0.25
+    return wv.hp > incoming * CFG.CAMP_FIGHT_SAFETY_MARGIN
+
+
+def kite_threat(wv):
+    """Return a dangerous camp to back away from before a ranged trade."""
+    if not CFG.KITE_WHEN_RANGED or wv.hp_frac() > CFG.KITE_HP_FRACTION:
+        return None
+    try:
+        if wv.me.attack_range() <= 1:
+            return None
+    except Exception:
+        return None
+    for camp in wv.camps:
+        try:
+            if (camp.strength() > 0
+                    and wv.pos.chebyshev_distance(camp.position()) <= camp.attack_range()):
+                return camp.position()
+        except Exception:
+            continue
+    return None
 
 
 def best_camp_in_range(wv, require_winnable=True):
     me = wv.me
-    best, best_hp = None, 1 << 30
+    best, best_key = None, (2, 0, 1 << 30)
     for c in wv.camps:
         try:
             if not _in_attack_range(me, c):
@@ -171,8 +213,20 @@ def best_camp_in_range(wv, require_winnable=True):
                 continue
         except Exception:
             continue
-        if hp < best_hp:
-            best_hp, best = hp, c
+        # Clear harmless sources before trading HP into hostile camps. Among
+        # camps we can already hit, take the group with the largest gem payout
+        # first; this is live camp metadata, not a stale map guess.
+        try:
+            danger = 0 if c.strength() <= 0 else 1
+        except Exception:
+            danger = 1
+        try:
+            gems = c.camp_group().gem_value()
+        except Exception:
+            gems = 0
+        key = (danger, -gems, hp)
+        if key < best_key:
+            best_key, best = key, c
     return best
 
 

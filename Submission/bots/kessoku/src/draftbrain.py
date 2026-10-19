@@ -13,8 +13,6 @@ import cambc
 from config import CFG
 import champions
 import plan
-from mapinfo import map_info
-
 CD = cambc.ChampionDraft
 
 
@@ -78,6 +76,13 @@ def _team_fit(pick, our_roles):
     # penalise 3rd+ of a role
     if same >= 2:
         fit -= 0.7 * (same - 1)
+    # C&I adds two fragile bodies under one draft slot. It is powerful with a
+    # frontline/peel plan, but a brittle blind first pick in the old scorer.
+    if pick == CD.CASSI_AND_ISSAC:
+        if champions.ROLE_BRUISER not in our_roles:
+            fit -= 0.30
+        if champions.ROLE_SUPPORT not in our_roles:
+            fit -= 0.25
     return CFG.DW_TEAM_FIT * fit
 
 
@@ -89,6 +94,12 @@ def _counter(pick, enemy_picks):
         bonus += 0.8
     if enemy_stuns >= 2:
         bonus += 0.1 * champions.features(pick)["survive"]
+    if any(_as_cd(enemy) == CD.CASSI_AND_ISSAC for enemy in enemy_picks):
+        # Two squishy linked champions reward splash and reliable control.
+        if fl.get("aoe"):
+            bonus += 0.35
+        if fl.get("stun"):
+            bonus += 0.20
     return CFG.DRAFT_COUNTER_WEIGHT * bonus
 
 
@@ -97,10 +108,13 @@ def _as_cd(v):
 
 
 def play():
-    try:
-        mi = map_info()
-    except Exception:
-        mi = None
+    # Draft fuel is shared across the complete drafting sequence.  Constructing
+    # two whole-map distance fields here caused the bot to time out on larger
+    # maps, leaving random picks.  Gameplay performs geometry analysis once
+    # per champion where it has a normal turn budget; drafting must be cheap
+    # and deterministic so it always completes.
+    mi = None
+    strategy = plan.STRAT_BALANCED
 
     try:
         ours = list(cambc.draft.current_draft(cambc.Team.ALLY))
@@ -111,16 +125,12 @@ def play():
     except Exception:
         theirs = []
 
-    available = [p for p in champions.ALL_PICKS if int(p) not in [int(x) for x in ours]]
+    taken = {int(pick) for pick in [*ours, *theirs]}
+    available = [pick for pick in champions.ALL_PICKS if int(pick) not in taken]
     if not available:
         return
 
-    if mi is not None:
-        strategy = _strategy(mi)
-        mult = _geometry_mult(mi, _feature_mult(strategy))
-    else:
-        strategy = plan.STRAT_BALANCED
-        mult = _feature_mult(strategy)
+    mult = _feature_mult(strategy)
 
     our_roles = [champions.role_of(_as_cd(p)) for p in ours]
 
@@ -140,4 +150,4 @@ def play():
         final = [int(x) for x in cambc.draft.current_draft(cambc.Team.ALLY)]
     except Exception:
         final = [int(best)]
-    plan.write(final, strategy, mi.symmetry if mi is not None else 2)
+    plan.write(final, strategy, 2)

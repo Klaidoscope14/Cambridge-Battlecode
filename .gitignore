@@ -209,3 +209,8 @@ __marimo__/
 # Battlecode
 *.replay26replay.replay26
 .DS_Store
+
+# Local tooling output
+graphify-out/
+Submission/.tmp*
+Submission/*-submission.zip

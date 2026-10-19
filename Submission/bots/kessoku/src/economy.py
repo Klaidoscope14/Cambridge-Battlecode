@@ -74,10 +74,17 @@ def should_recall(wv, belief) -> bool:
     mi = map_info()
     if mi.ally_spawn.is_set(wv.pos):
         return False
+    unsafe = len(wv.enemies) > 0 or belief.danger_at(wv.pos)
+    # At critically low HP a camp shot or a single unseen enemy can turn a
+    # productive trip into a death.  The channel cost is lower than that loss.
     if wv.hp_frac() <= CFG.RECALL_HP_FRACTION_SAFE:
         return True
-    unsafe = len(wv.enemies) > 0 or belief.danger_at(wv.pos)
     if wv.hp_frac() <= CFG.RECALL_HP_FRACTION and unsafe and wv.gems == 0:
+        return True
+    # A large unspent stack is not an advantage.  Recall only when empty and
+    # out of contact so we do not abandon a bank trip or a nearby fight.
+    if (wv.gems == 0 and wv.gold >= CFG.RECALL_IF_RICH_GOLD
+            and not wv.enemies and not belief.danger_at(wv.pos)):
         return True
     return False
 
@@ -109,30 +116,82 @@ def _family_for(role, ctype) -> str:
     return "POWER"
 
 
-def buy_items(wv, role) -> bool:
-    me = wv.me
+def _shop_item(me, role):
+    """Return this champion's next stat shard, or ``None`` if unsupported."""
     try:
         ctype = me.champion_name()
     except Exception:
-        return False
+        return None
     stat = _STAT_BY_TYPE.get(ctype, "STRENGTH")
     family = _family_for(role, ctype)
-    name = f"{family}_SHARD_OF_{stat}"
     try:
-        item = getattr(cambc.ItemType, name)
+        return getattr(cambc.ItemType, f"{family}_SHARD_OF_{stat}")
     except Exception:
-        item = cambc.ItemType.POWER_SHARD_OF_STRENGTH
-    cost = item.cost()
-    if cost <= 0:
-        return False
-    count = me.gold_count() // cost
-    if count >= 1 and me.can_buy(item, count):
         try:
-            me.buy(item, count)
-            return True
+            return cambc.ItemType.POWER_SHARD_OF_STRENGTH
         except Exception:
-            return False
-    return False
+            return None
+
+
+def should_shop(wv, role=None) -> bool:
+    """Use every legal shop, including Tavi's field shop.
+
+    `can_buy` is the authoritative legality check: it accounts for whether a
+    champion is on spawn and for any champion-specific shop exception.
+    """
+    if wv.gold < CFG.SHOP_GOLD_TRIGGER:
+        return False
+    item = _shop_item(wv.me, role)
+    if item is None:
+        return False
+    try:
+        return bool(wv.me.can_buy(item, 1))
+    except Exception:
+        return False
+
+
+def buy_items(wv, role) -> bool:
+    me = wv.me
+    item = _shop_item(me, role)
+    if item is None:
+        return False
+    lock = None
+    reserve_lock_gold = 0
+    if CFG.BUY_LOCKS:
+        try:
+            candidate = cambc.ConsumableType.ALTAR_LOCK
+            if me.can_buy(candidate):
+                lock = candidate
+                reserve_lock_gold = candidate.cost()
+        except Exception:
+            pass
+    bought = False
+    # Buy one at a time.  It works for partial stacks and avoids the old
+    # all-or-nothing `can_buy(item, count)` failure when a later shard becomes
+    # unavailable.
+    for _ in range(5):
+        try:
+            # Keep enough gold for one lock when the current shop permits it;
+            # otherwise a large stack gets converted entirely into shards and
+            # this tactical consumable is never actually carried.
+            if me.gold_count() < item.cost() + reserve_lock_gold:
+                break
+            if not me.can_buy(item, 1):
+                break
+            if me.buy(item, 1) is False:
+                break
+            bought = True
+        except Exception:
+            break
+    # Altar locks turn a successful bank into a denial opportunity.  They are
+    # deliberately a small follow-up purchase, never a reason to delay stats.
+    if lock is not None:
+        try:
+            if me.can_buy(lock) and me.buy(lock) is not False:
+                bought = True
+        except Exception:
+            pass
+    return bought
 
 
 def _safe_dist(a, b) -> int:
