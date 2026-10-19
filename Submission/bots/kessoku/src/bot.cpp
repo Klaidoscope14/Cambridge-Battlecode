@@ -144,7 +144,7 @@ void Bot::observe() {
     for (std::size_t i = 0; i < allies.size(); ++i) {
         const auto& a = allies[i];
         mates.push_back({a.position(), a.health(), std::max(a.max_health(), 1.f), a.strength() + 0.25f * a.focus(),
-                         static_cast<int>(i)});
+                         static_cast<int>(i), static_cast<int>(a.gem_count()), static_cast<int>(a.champion_name())});
     }
 
     my_hp = me.health();
@@ -199,9 +199,14 @@ std::optional<bc::item_type> Bot::next_item() const {
     std::vector<Step> plan;
     if (kind == bc::champion_type::vesper_vale)
         plan.push_back({I::treasure_shard_of_strength, I::treasure_emblem_of_strength});
+    if (kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 1)
+        plan.push_back({I::durability_shard_of_health, I::durability_emblem_of_health});
+    if (kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 2)
+        plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
     if (focus) plan.push_back({I::monster_shard_of_focus, I::monster_emblem_of_focus});
     else plan.push_back({I::monster_shard_of_strength, I::monster_emblem_of_strength});
-    plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
+    if (!(kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 2))
+        plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
     // Tavi shops anywhere, so he rarely recalls: Home is wasted on him.
     if (Cfg::HOME_SLOT >= 0 && kind != bc::champion_type::tavi) {
         const auto at = std::min<std::size_t>(plan.size(), static_cast<std::size_t>(Cfg::HOME_SLOT) + (plan.size() > 2 ? 1 : 0));
@@ -493,6 +498,9 @@ void Bot::assess_threat() {
         f.ranged = e.attack_range() > 1;
         f.gems = static_cast<int>(e.gem_count());
         f.index = static_cast<int>(i);
+        if (e.is_recalling()) f.channel = Channel::RECALL;
+        else if (e.is_submitting_gems()) f.channel = Channel::TRIBUTE;
+        else if (e.is_teleporting()) f.channel = Channel::TELEPORT;
         for (const auto& ab : e.abilities()) {
             if (ab.is_on_cooldown()) continue;
             if (ab.is_attack_reset()) f.reset = true;
@@ -503,6 +511,7 @@ void Bot::assess_threat() {
         foes.push_back(f);
     }
     if (foes.empty()) return;
+    last_foe_round = round;
     burst_here = burst_at(pos);
     int nearest = 99;
     for (const auto& f : foes) nearest = std::min(nearest, cheb(f.pos, pos));
@@ -643,6 +652,8 @@ bool Bot::fight_enemies(bool kills_only) {
     auto priority = [&](const Foe& f) {
         float s = 1.f - f.hp / f.max_hp + f.gems / 200.f;
         if (f.hp <= burst) s += 10.f;
+        if (Cfg::BREAK_CHANNELS && f.channel == Channel::RECALL) s += Cfg::BREAK_RECALL;  // any hit cancels it
+        if (f.channel == Channel::TRIBUTE) s += f.gems / 50.f;  // standing still with a bag
         return s;
     };
     std::vector<const Foe*> order;
@@ -666,8 +677,34 @@ bool Bot::fight_enemies(bool kills_only) {
             }
     }
 
+    // Ranged with a ready reset: step into range of a target we can finish, then fire.
+    if (Cfg::RANGED_CHASE && Cfg::RANGED_MOVE_RESET && ranged && !outmatched && me.can_move() && me.can_attack()
+        && me.can_cast()) {
+        bool reset_ready = false;
+        for (const auto& ab : me.abilities()) reset_ready = reset_ready || (ab.is_attack_reset() && ab.is_ready());
+        const auto reach = me.attack_tiles();
+        bool any = false;
+        for (const auto* f : order) any = any || reach.is_set(f->pos);
+        if (reset_ready && !any)
+            for (const auto* f : order) {
+                if (f->hp > burst || cheb(f->pos, pos) != me.attack_range() + 1) continue;
+                bitboard goal = square(f->pos, me.attack_range());
+                bool safe = false;
+                for (auto t : (goal & square(pos, 1)).positions()) safe = safe || burst_at(t) < 0.5f * my_hp;
+                if (safe && move_to(goal, false)) break;
+            }
+    }
+
     bool engaged = false;
     const bc::champion* hit = nullptr;
+    if (!me.can_attack()) {
+        const auto reach = me.attack_tiles();
+        for (const auto* f : order)
+            if (reach.is_set(f->pos)) {
+                restore_attack();
+                break;
+            }
+    }
     if (me.can_attack()) {
         const auto reach = me.attack_tiles();
         for (const auto* f : order)
@@ -715,6 +752,91 @@ bool Bot::fight_enemies(bool kills_only) {
         }
     }
     return engaged;
+}
+
+// Slot holding this champion's stun, or -1. Explicit because the engine reports
+// Ryth's area stun as plain area damage and Marcella's stun rides her reset.
+int Bot::stun_slot() const {
+    using T = bc::champion_type;
+    switch (kind) {
+        case T::cassi: case T::tavi: return 1;
+        case T::prism: case T::ren: case T::ryth: case T::marcella: return 0;
+        default: return -1;
+    }
+}
+
+// Channels are fragile. Any damage cancels a recall (no heal, no escape); a stun
+// cancels a tribute or a teleport crystal. Spend what it takes on the most
+// valuable channel in reach this turn.
+bool Bot::break_channels() {
+    if (!Cfg::BREAK_CHANNELS) return false;
+    auto& me = bc::self();
+    std::vector<std::pair<float, const Foe*>> order;
+    for (const auto& f : foes) {
+        float v = 0.f;
+        if (f.channel == Channel::RECALL) v = Cfg::BREAK_RECALL;
+        else if (f.channel == Channel::TRIBUTE && f.gems >= 10) v = Cfg::BREAK_TRIBUTE;
+        else if (f.channel == Channel::TELEPORT) v = Cfg::BREAK_TELEPORT;
+        if (v > 0.f) order.emplace_back(v + f.gems / 50.f, &f);
+    }
+    if (order.empty()) return false;
+    std::sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+
+    const int stun = stun_slot();
+    for (const auto& [value, f] : order) {
+        const auto& e = enemies[static_cast<std::size_t>(f->index)];
+        try {
+            if (!e.is_alive() || !e.is_visible()) continue;
+            if (f->channel == Channel::RECALL) {
+                // Basic attack, a melee step-in, or any damaging spell.
+                if (me.can_attack() && me.attack_tiles().is_set(f->pos)) {
+                    me.attack(e);
+                    acted_attack = true;
+                    g_breaks++, g_break_kind = f->channel;
+                    return true;
+                }
+                if (Cfg::BREAK_CHASE && !ranged && !outmatched && me.can_move() && me.can_attack() && cheb(f->pos, pos) == 2
+                    && burst_at(pos) < 0.5f * my_hp && move_to(square(f->pos, 1), false)
+                    && me.attack_tiles().is_set(f->pos)) {
+                    me.attack(e);
+                    acted_attack = true;
+                    g_breaks++, g_break_kind = f->channel;
+                    return true;
+                }
+                if (!Cfg::BREAK_RECALL_SPELLS || !me.can_cast()) continue;
+                for (const auto& ab : me.abilities()) {
+                    if (!ab.is_ready() || !(ab.is_damage() || ab.is_aoe_damage())) continue;
+                    if (!ab.valid_tiles().is_set(f->pos)) continue;
+                    if (ab.can_target_enemies() ? ab.use(e) : ab.use(f->pos)) {
+                        g_breaks++, g_break_kind = f->channel;
+                        return true;
+                    }
+                }
+                continue;
+            }
+            // Tribute / teleport: only a stun will do.
+            if (stun < 0 || !me.can_cast()) continue;
+            const auto& ab = me.abilities()[static_cast<std::size_t>(stun)];
+            if (!ab.is_ready()) continue;
+            if (kind == bc::champion_type::marcella) {
+                // Enhanced reset: the next basic attack stuns.
+                if (me.attack_tiles().is_set(f->pos) && ab.use() && me.can_attack()) {
+                    me.attack(e);
+                    acted_attack = true;
+                    g_breaks++, g_break_kind = f->channel;
+                    return true;
+                }
+                continue;
+            }
+            if (!ab.valid_tiles().is_set(f->pos)) continue;
+            if (ab.can_target_enemies() ? ab.use(e) : ab.use(f->pos)) {
+                g_breaks++, g_break_kind = f->channel;
+                return true;
+            }
+        } catch (...) {
+        }
+    }
+    return false;
 }
 
 bool Bot::try_lock_altar() {
@@ -774,6 +896,56 @@ void Bot::cast_on_camps(int gid) {
     }
 }
 
+// A ranged champion that walked this turn has spent its attack; a ready reset
+// buys it back so the step and the shot happen in the same turn.
+bool Bot::restore_attack() {
+    auto& me = bc::self();
+    if (!Cfg::RANGED_MOVE_RESET || !ranged || acted_attack || me.can_attack() || !me.can_cast()) return false;
+    for (const auto& ab : me.abilities()) {
+        if (!ab.is_attack_reset() || !ab.is_ready()) continue;
+        try {
+            return ab.use() && me.can_attack();
+        } catch (...) {
+            return false;
+        }
+    }
+    return false;
+}
+
+// Champion type that should capture this finished group. Every nearby ally runs
+// the same rule on the same visible facts, so they agree without messages.
+int Bot::capturer(const Group& g) const {
+    auto near = [&](vec2 p) {
+        for (auto t : g.tiles)
+            if (cheb(p, t) <= Cfg::CAPTURE_RANGE) return true;
+        return false;
+    };
+    auto score = [&](int type, int gems) {
+        const bool vesper = type == static_cast<int>(bc::champion_type::vesper_vale);
+        return (vesper && g.gold >= Cfg::CAPTURE_GOLD_MIN ? 100000 : 0) + gems * 16 + (15 - type);
+    };
+    int best = static_cast<int>(kind);
+    int best_s = score(best, static_cast<int>(bc::self().gem_count()));
+    for (const auto& m : mates) {
+        if (!near(m.pos)) continue;
+        const int s = score(m.type, m.gems);
+        if (s > best_s) best_s = s, best = m.type;
+    }
+    if (!Cfg::CAPTURE_BY_BAG && best_s < 100000) return -1;  // no Vesper case: first come, first served
+    return best;
+}
+
+// True once the designated capturer (someone else) stands on the group's region,
+// so we can step off without resetting the capture timer.
+bool Bot::hand_over(const Group& g) const {
+    if (!Cfg::CAPTURE_ASSIGN) return false;
+    const int who = capturer(g);
+    if (who < 0 || who == static_cast<int>(kind)) return false;
+    for (const auto& m : mates)
+        if (m.type == who && g.spawn.is_set(m.pos)) return true;
+    return false;
+}
+
 bool Bot::attack_camp(int gid) {
     auto& me = bc::self();
     const auto reach = me.attack_tiles();
@@ -788,6 +960,7 @@ bool Bot::attack_camp(int gid) {
     };
     const auto* pick = best_in_range();
     if (!pick) return false;
+    restore_attack();
     if (me.can_attack()) {
         me.attack(*pick);
         acted_attack = true;
@@ -877,12 +1050,15 @@ bool Bot::should_bank() const {
     if (bag == 0) return false;
     if (bc::global_submitted_gems(team::ally) + bag >= bc::constants::winning_gems) return true;
     if (round + 40 >= static_cast<int>(bc::constants::max_rounds)) return true;
-    if (bag >= Cfg::BANK_BAG) return true;
+    const bool carrier = Cfg::PRISM_CARRIER && kind == bc::champion_type::prism;
+    const bool quiet = round - last_foe_round > Cfg::PRISM_SAFE_ROUNDS;
+    if (bag >= (carrier && quiet ? Cfg::PRISM_BANK_BAG : Cfg::BANK_BAG)) return true;
     if (altar_field.get(pos) <= Cfg::BANK_NEAR_DIST) return true;
     // Enemies nearby: a bag is a bounty. Bank small bags when they are close
     // or stronger, bigger bags as soon as anyone is in sight range.
     if (bag >= Cfg::THREAT_BANK_BAG) {
         if (outmatched) return true;
+        if (carrier) return false;  // even or winning: her bag is Focus for the fight
         const int range = bag >= Cfg::BANK_THREAT_BAG ? Cfg::THREAT_BANK_RANGE : 4;
         for (const auto& f : foes)
             if (cheb(f.pos, pos) <= range) return true;
@@ -974,6 +1150,18 @@ bool Bot::farm() {
         if (g.spawn.is_set(pos)) {
             capture_group = gid;  // stand still: the capture timer runs
             return true;
+        }
+        if (Cfg::CAPTURE_ASSIGN && capturer(g) >= 0) {
+            const int who = capturer(g);
+            // Ours: whoever holds the tile hands over on arrival. If every region
+            // tile is taken (single-tile camps), fall through and leave it to them.
+            if (who == static_cast<int>(kind) && move_to(g.spawn)) return true;
+            for (const auto& m : mates)
+                if (m.type == who && cheb(m.pos, g.tiles.front()) <= 3) {  // the capturer is right there
+                    g.skip_until = round + 8;
+                    target = -1;
+                    return false;
+                }
         }
         for (const auto& a : mates)
             if (g.spawn.is_set(a.pos)) {  // an ally is already capturing
@@ -1070,6 +1258,18 @@ void Bot::play_turn() {
     }
     g_stage = "enemies";
     try_lock_altar();
+    g_stage = "enemies:channels";
+    const vec2 before_break = pos;
+    if (break_channels() || pos != before_break) {  // a step-in changes what we can see
+#ifdef KSK_TRACE
+        std::cout << "BREAK R" << round << " " << bc::to_string(kind) << " channel=" << g_break_kind << " total=" << g_breaks << "\n";
+#endif
+        std::erase_if(foes, [&](const Foe& f) {
+            const auto& e = enemies[static_cast<std::size_t>(f.index)];
+            return !e.is_visible() || !e.is_alive();
+        });
+        camps = bc::vision::camps();
+    }
     g_stage = "enemies:fight";
     const vec2 before_fight = pos;
     if (fight_enemies() || pos != before_fight) {  // kills leave vision; a chase step changes it
@@ -1086,7 +1286,15 @@ void Bot::play_turn() {
     // Never walk off a capture or out of a fight we are winning.
     g_stage = "hold";
     if (capture_group >= 0 && groups[static_cast<std::size_t>(capture_group)].spawn.is_set(pos)) {
-        if (bc::global_submitted_gems(team::ally) + me.gem_count() < bc::constants::winning_gems) {
+        auto& cg = groups[static_cast<std::size_t>(capture_group)];
+        if (hand_over(cg)) {
+#ifdef KSK_TRACE
+            std::cout << "HANDOVER R" << round << " " << bc::to_string(kind) << " -> type " << capturer(cg) << " gold=" << cg.gold << "\n";
+#endif
+            cg.skip_until = round + 8;  // the designated capturer has it
+            if (target == capture_group) target = -1;
+            capture_group = -1;
+        } else if (bc::global_submitted_gems(team::ally) + me.gem_count() < bc::constants::winning_gems) {
             attack_camp(capture_group);
             return;
         }

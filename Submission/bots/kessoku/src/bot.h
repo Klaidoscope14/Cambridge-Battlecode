@@ -22,6 +22,12 @@ struct Group {
 };
 
 // What one visible enemy champion can do to us on its next turn.
+// Enemy channels and what breaks them: damage breaks a recall, a stun breaks a
+// tribute or a teleport crystal.
+namespace Channel {
+inline constexpr int NONE = 0, RECALL = 1, TRIBUTE = 2, TELEPORT = 3;
+}
+
 struct Foe {
     vec2 pos;
     float hp = 0.f, max_hp = 1.f, strength = 0.f;
@@ -31,6 +37,7 @@ struct Foe {
     bool dash = false;    // dash ready
     bool stun = false;    // stun ready
     int gems = 0;
+    int channel = 0;      // Channel::kind the enemy is in
     int index = 0;        // into Bot::enemies
 };
 
@@ -39,6 +46,8 @@ struct Mate {
     vec2 pos;
     float hp = 0.f, max_hp = 1.f, power = 0.f;
     int index = 0;  // into Bot::allies
+    int gems = 0;
+    int type = 0;   // champion_type
 };
 
 class Bot {
@@ -59,6 +68,7 @@ class Bot {
     int need = 0;          // allies the current target needs alongside us
     int wait_turns = 0;    // turns spent holding for a squad
     int next_eval = 0;     // round of the next full target re-score
+    int last_foe_round = -1000;  // last round an enemy champion was in sight
     int capture_group = -1;
     unsigned last_gems = 0;
     bool acted_attack = false;
@@ -116,12 +126,17 @@ class Bot {
 
     bool fight_enemies(bool kills_only = false);
     bool try_lock_altar();
+    bool break_channels();
+    int stun_slot() const;
     bool should_bank() const;
     bool bank();
     bool farm();
     bool retreat_if_hurt();
     void cast_on_camps(int group);
     bool attack_camp(int group);
+    bool restore_attack();
+    int capturer(const Group& g) const;
+    bool hand_over(const Group& g) const;
     void use_support_abilities();
 
 public:

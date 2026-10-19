@@ -15,6 +15,8 @@ inline int cheb(vec2 a, vec2 b) { return static_cast<int>(a.chebyshev_distance(b
 
 // Last decision stage, printed with any turn error to locate it.
 inline const char* g_stage = "";
+inline int g_breaks = 0;      // channel breaks this game (trace counter)
+inline int g_break_kind = 0;  // Channel kind of the latest break
 
 inline bitboard square(vec2 p, int r) {
     bitboard b;
@@ -48,6 +50,25 @@ inline constexpr float OUTMATCHED = 1.25f;     // enemy fight power over ours th
 inline constexpr int SKIRMISH_RANGE = 7;       // champions this close take part in a fight
 inline constexpr int THREAT_BANK_BAG = 10;     // bank this early when outmatched
 inline constexpr int THREAT_BANK_RANGE = 8;
+// Channel breaking: worth of interrupting each enemy channel (plus bag / 50).
+// Measured 2026-10-19: free hits on recallers + stuns on tributes/teleports is
+// neutral-to-better (mirror 9/18, starter-python 432 -> 427 rounds, 6 -> 3 deaths);
+// chasing recallers and spending spells on them cost farming (starter-cpp 423 -> 436).
+inline constexpr bool BREAK_CHANNELS = true;
+inline constexpr float BREAK_RECALL = 2.0f;
+inline constexpr float BREAK_TRIBUTE = 3.0f;    // only bags of 10+ gems
+inline constexpr float BREAK_TELEPORT = 2.5f;
+inline constexpr bool BREAK_CHASE = false;          // melee steps in to hit a recaller
+inline constexpr bool BREAK_RECALL_SPELLS = false;  // spend damage spells on recallers
+// Ranged champions with an attack reset (Vesper Vale, Tavi, Willow): a move
+// spends the attack allowance, the reset restores it (probed 2026-10-19: works).
+// Off: with those three force-drafted on both sides it gained nothing (mirror
+// 9/18; starter-cpp 436 -> 439 rounds; starter-python 429 -> 444 rounds and
+// 2 -> 6 deaths, 9 with the chase). The reset is one extra attack per 8 turns
+// whenever it is spent, so spending it on a move only shifts it.
+inline constexpr bool RANGED_MOVE_RESET = false;  // move, reset, attack in one turn
+inline constexpr bool RANGED_CHASE = false;       // step toward a killable enemy, then fire
+inline constexpr bool TEST_FORCE_RANGED = false;  // A/B only: draft Vesper, Tavi, Willow first
 // Emblems: Monster = +10% camp damage, Jungle = -30% camp damage taken,
 // Home = recall 5 -> 3 turn ends. HOME_SLOT is Home's place in the build (-1 skips it).
 // Measured 2026-10-19 (mirror vs previous build, 18 games): Monster bonus in the
@@ -66,6 +87,35 @@ inline constexpr bool MONOLITH_FIGHTS = false;
 inline constexpr float MONOLITH_POOL_SHARE = 0.60f;
 inline constexpr int MONOLITH_MAX_BAG = 10;  // bank before joining a monolith fight
 inline constexpr int MONOLITH_MAX_NEED = 2;  // never tie up more helpers than this (monoliths regenerate)
+// Capture assignment: one champion captures a finished group. Vesper Vale
+// (+20% gold, +40% with Treasure) takes camps worth this much gold; otherwise the
+// biggest bag can, so the reward rides an altar trip that is coming anyway.
+// Measured 2026-10-19 with Vesper force-drafted on both sides: Vesper-only gives
+// +12% team gold and mirror 11/18 (parity 9/18), but ~28 rounds slower vs the
+// starters. The biggest-bag rule was 15-35 rounds slower everywhere -> off.
+// Inert unless Vesper is drafted (the draft rarely picks her).
+inline constexpr bool CAPTURE_ASSIGN = true;
+inline constexpr int CAPTURE_GOLD_MIN = 60;
+inline constexpr bool CAPTURE_BY_BAG = false;  // biggest bag captures when Vesper is not involved
+inline constexpr int CAPTURE_RANGE = 6;  // allies this close to the group are candidates
+inline constexpr bool TEST_FORCE_VESPER = false;  // A/B only: draft Vesper Vale first
+// Ryth turns 1% of bonus health into strength and usually tanks camps first.
+// 0 = Monster(str) -> Jungle(hp) -> Power(str) like everyone,
+// 1 = Durability(hp, -10% all damage) first, 2 = Jungle(hp, -30% camp damage) first.
+// Measured 2026-10-19 with Ryth force-drafted: both variants mirror 9/18 (parity)
+// and within a few rounds of build 0 vs the starters, with ~25% fewer deaths
+// (20 -> 14/15). Shipped 2: marginally fastest of the three.
+inline constexpr int RYTH_BUILD = 2;
+inline constexpr bool TEST_FORCE_RYTH = false;  // A/B only: draft Ryth first
+// Prism gains 0.2 Focus per carried gem, so she carries longer when it is safe:
+// a bigger bank threshold while no enemy has been seen for a while, and enemies
+// nearby only force a bank when we are outmatched (she fights with the bag).
+// Measured 2026-10-19 with Prism force-drafted: mirror 9/18 (parity), ~5 rounds
+// faster vs the starters, deaths 20 -> 16. Inert unless the draft picks Prism.
+inline constexpr bool PRISM_CARRIER = true;
+inline constexpr int PRISM_BANK_BAG = 70;
+inline constexpr int PRISM_SAFE_ROUNDS = 15;     // rounds since the last enemy sighting
+inline constexpr bool TEST_FORCE_PRISM = false;  // A/B only: draft Prism first
 // Shopping.
 inline constexpr int SHOP_TRIP_GOLD = 150;
 inline constexpr int RECALL_SHOP_GOLD = 270;

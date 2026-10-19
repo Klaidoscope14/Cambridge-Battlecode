@@ -65,6 +65,24 @@ void play_draft() {
     }
 
     const auto ours = bc::draft::current_draft(team::ally);
+    if (Cfg::TEST_FORCE_PRISM && std::find(ours.begin(), ours.end(), CD::prism) == ours.end()) {
+        bc::draft::pick(CD::prism);
+        return;
+    }
+    if (Cfg::TEST_FORCE_RYTH && std::find(ours.begin(), ours.end(), CD::ryth) == ours.end()) {
+        bc::draft::pick(CD::ryth);
+        return;
+    }
+    if (Cfg::TEST_FORCE_VESPER && std::find(ours.begin(), ours.end(), CD::vesper_vale) == ours.end()) {
+        bc::draft::pick(CD::vesper_vale);
+        return;
+    }
+    if (Cfg::TEST_FORCE_RANGED)
+        for (auto p : {CD::vesper_vale, CD::tavi, CD::willow})
+            if (std::find(ours.begin(), ours.end(), p) == ours.end()) {
+                bc::draft::pick(p);
+                return;
+            }
     CD best = CD::vendetta;
     float best_score = -1.f;
     for (int i = 0; i < 11; ++i) {
