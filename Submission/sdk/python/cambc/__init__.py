@@ -7,7 +7,7 @@ failures raise Error.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional, TypeVar, Union
 
 import builtins as _builtins
 import sys as _sys
@@ -100,6 +100,29 @@ if TYPE_CHECKING:
         GEM_CLUSTER = 2
         GOLD_CLUSTER = 3
         MONOLITH = 4
+
+    class CampState(IntEnum):
+        """Individual camp lifecycle; ALIVE means awake, ASLEEP means living but dormant."""
+
+        @staticmethod
+        def to_string(value: int) -> str: ...
+
+        def is_dead(self) -> bool:
+            """Check whether the captured state is dead."""
+            ...
+        def is_alive(self) -> bool:
+            """Check whether the captured state is living, including asleep camps."""
+            ...
+        def is_awake(self) -> bool:
+            """Check whether the captured state is awake (the ALIVE enum value)."""
+            ...
+        def is_asleep(self) -> bool:
+            """Check whether the captured state is living but dormant."""
+            ...
+
+        DEAD = 0
+        ALIVE = 1
+        ASLEEP = 2
 
     class PassiveType(IntEnum):
         """Champion passive."""
@@ -264,6 +287,35 @@ else:
         GEM_CLUSTER = 2
         GOLD_CLUSTER = 3
         MONOLITH = 4
+
+    class CampState(int):
+        """An individual camp's captured lifecycle; states are mutually exclusive, not flags."""
+        __slots__ = ()
+
+        DEAD = 0
+        ALIVE = 1
+        ASLEEP = 2
+
+        def __new__(cls, value: int = 0):
+            if value not in (0, 1, 2):
+                raise ValueError(f"unknown camp state: {value}")
+            return int.__new__(cls, value)
+
+        def is_dead(self) -> bool:
+            """Check whether the captured state is dead."""
+            return self == CampState.DEAD
+
+        def is_alive(self) -> bool:
+            """Check whether the captured state is living, including asleep camps."""
+            return self != CampState.DEAD
+
+        def is_awake(self) -> bool:
+            """Check whether the captured state is awake (the ALIVE enum value)."""
+            return self == CampState.ALIVE
+
+        def is_asleep(self) -> bool:
+            """Check whether the captured state is living but dormant."""
+            return self == CampState.ASLEEP
 
     class PassiveType:
         __slots__ = ()
@@ -532,6 +584,8 @@ if TYPE_CHECKING:
         INVALID_ACTION_SELL_ALREADY_SOLD = 131
         INVALID_ACTION_SELL_GOLD_OVERFLOW = 132
         INVALID_ACTION_SELL_NOT_ON_SPAWN = 133
+        DRAFT_ALREADY_PICKED = 134
+        DRAFT_NO_CHAMPION_SELECTED = 135
 
 else:
 
@@ -670,6 +724,8 @@ else:
         INVALID_ACTION_SELL_ALREADY_SOLD = 131
         INVALID_ACTION_SELL_GOLD_OVERFLOW = 132
         INVALID_ACTION_SELL_NOT_ON_SPAWN = 133
+        DRAFT_ALREADY_PICKED = 134
+        DRAFT_NO_CHAMPION_SELECTED = 135
 
 
 
@@ -680,9 +736,12 @@ if not TYPE_CHECKING:
         prefix = cls.__name__
         cls.to_string = staticmethod(lambda value: f"{prefix}.{names.get(value, value)}")
 
-    for _cls in (Team, Symmetry, CampType, PassiveType, ChampionType, ChampionDraft, AbilityKind, BuffTypes, ItemPassive, ErrorCode):
+    for _cls in (Team, Symmetry, CampType, CampState, PassiveType, ChampionType, ChampionDraft, AbilityKind, BuffTypes, ItemPassive, ErrorCode):
         _add_to_string(_cls)
     del _cls
+    for _name in ("DEAD", "ALIVE", "ASLEEP"):
+        setattr(CampState, _name, CampState(getattr(CampState, _name)))
+    del _name
 
 
 class Error(Exception):
@@ -1097,6 +1156,33 @@ class Camp(Unit):
     def camp_group(self) -> game_map.CampGroup:
         """Return the group this camp belongs to."""
         return game_map._camp_group(self._group)
+
+    def state(self) -> CampState:
+        """Return CampState.DEAD, ALIVE (awake), or ASLEEP (living but dormant).
+
+        The current tile, or last occupied tile when dead, must be in vision;
+        hidden camps raise Error with API_NOT_IN_VISION. Separate from camp-group state.
+        """
+        value = _bc.camp_state(self._handle)
+        if value not in (CampState.DEAD, CampState.ALIVE, CampState.ASLEEP):
+            raise Error(ErrorCode.API_VALUE_OUT_OF_RANGE, "unknown engine camp state")
+        return CampState(value)
+
+    def is_dead(self) -> bool:
+        """Query whether this camp is dead; uses the same visibility checks as state()."""
+        return self.state().is_dead()
+
+    def is_alive(self) -> bool:
+        """Query whether this camp is living (awake or asleep); uses the visibility checks of state()."""
+        return self.state().is_alive()
+
+    def is_awake(self) -> bool:
+        """Query whether this camp is awake; uses the same visibility checks as state()."""
+        return self.state().is_awake()
+
+    def is_asleep(self) -> bool:
+        """Query whether this camp is living but dormant; uses the visibility checks of state()."""
+        return self.state().is_asleep()
 
     def health(self) -> float:
         """Return current health; raises Error if the unit is not visible."""
@@ -1677,20 +1763,20 @@ class Champion(Unit):
         return _bc.champion_get(self._handle, 4)
 
     def champion_name(self) -> ChampionType:
-        """Return the champion's type."""
+        """Return the champion's type; readable without vision."""
         if self._design_type is not None:
             return self._design_type
-        return _bc.champion_get(self._handle, 1)
+        return _bc.champion_identity(self._handle, 1)
 
     def passive(self) -> PassiveType:
         """Return the champion's passive."""
         return _cache.champion_designs[self.champion_name()][1]
 
     def team(self) -> Team:
-        """Return the champion's team."""
+        """Return the champion's team; readable without vision."""
         if self._design_type is not None:
             raise Error(ErrorCode.API_NOT_IN_VISION, "design champion has no live state")
-        return _bc.champion_get(self._handle, 0)
+        return _bc.champion_identity(self._handle, 0)
 
     def is_ally(self) -> bool:
         """Check whether this champion belongs to the observing team."""
@@ -2188,6 +2274,23 @@ def fuel_remaining() -> int:
     if remaining < 0:
         raise RuntimeError("fuel_remaining ABI mismatch: negative fuel")
     return remaining
+
+
+if TYPE_CHECKING:
+
+    def debug_block(fn: Callable[[], object]) -> None:
+        """Run `fn` without spending fuel when the bot is built in debug mode
+        (`cambc run`, the default); skipped entirely in release mode
+        (`--release`, and always on the platform). The free budget per block is
+        1000 turns, beyond which the rest is charged; ending the turn inside
+        closes the free window. Can also be used as a bare decorator.
+
+        Args:
+            fn: Callable taking no arguments; never called in release mode.
+        """
+
+else:
+    debug_block = _bc.debug_block
 
 
 def end_turn() -> None:

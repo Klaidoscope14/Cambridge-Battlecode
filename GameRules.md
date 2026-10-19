@@ -148,6 +148,7 @@ The map is a grid, between 30*30 to 100*100, built from 5 different tiles as sho
 | Holes | Can be seen over, cannot be moved onto but can be dashed over. |
 | Bush | Blocks line of sight, can be moved onto. If you are within a bush, you can see out of the bush. |
 | Altar | Cannot be moved onto, used to submit gems. |
+| Spawn Tile | Cannot be moved onto by opponents. Your team's champions spawns onto these tiles. While standing on these tiles you are healed. |
 
 The map also is populated with camps/monsters as outlined in the next section.
 
@@ -181,7 +182,7 @@ The main way to obtain resources is to defeat camps or monsters, on the map. The
 | Elk | 2,400 | 60 | 3 | 160 | 36 | 60 rounds |
 | Gem cluster | 500 | 0 | 0 | 0 | 24 | 50 rounds |
 | Gold cluster | 500 | 0 | 0 | 35 | 0 | 50 rounds |
-| Monolith | 20,000 | 200 | 5 | 300 | 200 | 150 rounds |
+| Monolith | 20,000 | 200 | 3 | 300 | 200 | 150 rounds |
 
 The map is populated with a variety of monsters. They vary in health, strength (damage dealt per turn) and the rewards they drop.
 

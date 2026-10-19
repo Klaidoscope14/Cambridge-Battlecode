@@ -1,53 +1,35 @@
 # How to submit (CAMBC 2026)
 
-This folder is a **ready-to-use `cambc` workspace** containing our bot.
+`Submission/` is a `cambc` workspace (SDK 2.2.4). The bot is **`bots/kessoku`**, written in C++.
 
-## What actually gets submitted
-Only the **bot source**: `bots/kessoku/src/*.py` (+ `bots/kessoku/pyrightconfig.json`).
-The SDK (`sdk/`), maps (`maps/`), build artifacts (`.cambc/`), and the
-`starter-python` test opponent are **workspace scaffolding — NOT submitted**.
-`README.md` and `eval.py` inside `bots/kessoku/` are dev aids; harmless if bundled.
+## Where the submission zip lives
+The upload zip always goes to the **repository root**: `Cambridge_BattleCode/kessoku.zip`.
+Nothing else in the repo is a submission artifact.
 
-## Prerequisites
+## Build, test, bundle
+Run from inside `Submission/`:
 ```bash
-python -m pip install --upgrade cambc     # the CLI (v2.1.6)
-```
-This folder was created with `cambc init`, so `sdk/` + `maps/` are already here.
-If you move it or they go missing, re-run from inside this folder:
-```bash
-cambc init --yes .
-```
-
-## Build & test locally
-```bash
-cd Submission
-cambc build kessoku
-cambc run kessoku starter-python --map maps/lanes.map26a --view     # watch a match
-cambc run kessoku starter-python --map maps/<m>.map26a --statistics replays/s.json
-python bots/kessoku/eval.py --bot kessoku --opp starter-python --runs 3   # averaged A/B
+cambc build kessoku --release                                   # same mode as the platform
+cambc run kessoku starter-cpp --map maps/lanes.map26a --view    # watch a match
+cambc run kessoku starter-python --map maps/rows.map26a         # other starter opponent
+cambc bundle kessoku --output ../kessoku.zip                    # refresh the root zip
 ```
 Maps: collision, corners, elkring, expanse, interlock, lanes, monolith, packs, rows.
+Each team's stdout is inside the replay bundle (`.repl26a` is a zip: `team-a.stdout`, `team-b.stdout`).
+Turn errors print as `bot error [stage]: ...`.
 
-## Submit (two ways — pick one)
-
-**A) Direct from the CLI**
+## Submit
+Either upload `kessoku.zip` on the platform's Submissions page, or:
 ```bash
-cambc login            # opens browser to approve; 7-day session
-cambc submit kessoku   # uploads source to your team
+cambc login
+cambc submit kessoku
 ```
 
-**B) ZIP upload**
-```bash
-cambc bundle kessoku -o submissions         # makes submissions/kessoku.zip (source only)
-# then upload submissions/kessoku.zip on the platform's Submissions page
-```
-Follow compilation status on the Submissions page.
+## Bot layout (`bots/kessoku/src`)
+- `main.cpp`: turn loop; logs any turn error with the decision stage.
+- `draft.cpp`: scores champions for camp-farming throughput, tilted by map shape.
+- `bot.cpp` / `bot.h`: per-champion logic (retreat, altar lock, PvP, banking, shopping, farming).
+- `common.h`: every tunable (`Cfg::`) and the 8-byte shared-memory layout (`Mem::`).
 
-## Status / caveats before you submit
-- Builds clean (WASM), 0 crashes, plays all 9 maps both sides.
-- **Currently loses to the shipped `starter-python`** (it reaches 1,000 gems
-  first), competitive on ~6/9 maps (lanes 796, interlock 614, packs 580, …).
-- Known bugs to fix first: **corners/rows tribute 0** (carry→altar loop stalls),
-  **elkring 56 deaths** (face-tanking elk backfires). See `bots/kessoku/README.md`.
-- It is a legitimate, submittable bot — but you'd be submitting a work-in-progress
-  baseline. Tune with `eval.py` (averaged, both sides) before a sprint lock.
+Shared memory: bytes 0-5 hold each body's claimed camp group (id+1); bytes 6-7 broadcast
+the latest capture (group id+1, round low byte) so allies skip respawning camps.
