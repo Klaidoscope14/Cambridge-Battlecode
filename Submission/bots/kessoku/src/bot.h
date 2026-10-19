@@ -30,6 +30,10 @@ inline constexpr int NONE = 0, RECALL = 1, TRIBUTE = 2, TELEPORT = 3;
 
 struct Foe {
     vec2 pos;
+    float weight = 1.f;   // ghosts fade towards 0
+    int slack = 0;        // ghosts: extra tiles of reach for unseen movement
+    int type = 0;         // champion_type
+    int seen = 0;         // round last seen
     float hp = 0.f, max_hp = 1.f, strength = 0.f;
     float spell = 0.f;    // ready single-turn ability damage, 0 if none
     bool ranged = false;
@@ -69,8 +73,21 @@ class Bot {
     int wait_turns = 0;    // turns spent holding for a squad
     int next_eval = 0;     // round of the next full target re-score
     int last_foe_round = -1000;  // last round an enemy champion was in sight
+    int standing = 0;            // +1 far ahead, -1 far behind, 0 otherwise
+    bool denial = false;         // enemy is closing out the game: deny instead of farm
+    std::vector<vec2> tribute_tiles;  // tiles a champion can tribute from
+    int detour = 1 << 20;        // extra tiles to bank on the way to the target
+    int detour_round = -1000;
+    bool mono_dominant = false;  // monoliths hold most of the map's gems
+    bool dasher = false;         // we have a dash ability
+    bool islands = false;        // some camp group cannot be walked to from our spawn
+    bc::distance_field here_dash;  // terrain distance with holes passable (dashers)
+    std::uint8_t seen_capture = 0, seen_help = 0;
+    int help_fresh = -1000;      // round the help byte last changed
+    bool help_mine = false;      // we wrote the current request
     int capture_group = -1;
     unsigned last_gems = 0;
+    unsigned last_gold = 0;
     bool acted_attack = false;
     float dps_single = 1.f, dps_multi = 1.f;  // this turn's camp damage estimates
     float my_hp = 0.f, my_max = 1.f;
@@ -78,6 +95,9 @@ class Bot {
     std::vector<float> live_hp;     // visible living camp health per group, -1 if unseen
     std::vector<vec2> enemy_pos;
     std::vector<Foe> foes;
+    std::vector<Foe> ghosts;  // remembered enemies out of vision (index unused)
+    bool use_ghosts = false;  // this turn: we carry a bag worth protecting
+    bitboard visible_now;
     std::vector<Mate> mates;
     float burst_here = 0.f;   // enemy burst reaching our tile this turn
     bool outmatched = false;  // nearby enemies out-fight us and our allies
@@ -96,6 +116,8 @@ class Bot {
     void read_memory();
     void write_claim(int group);
     void broadcast_capture(int group);
+    void call_help();
+    bool answer_help();
     void observe();
     void estimate_dps();
     int group_of(vec2 p) const;
@@ -123,16 +145,20 @@ class Bot {
     int allies_near(const Group& g) const;
     float group_score(int id, int dist, int* req_out = nullptr) const;
     int choose_target();
+    int vulture_target() const;
 
     bool fight_enemies(bool kills_only = false);
     bool try_lock_altar();
     bool break_channels();
+    bool deny();
+    bool hand_off_aggro();
     int stun_slot() const;
     bool should_bank() const;
     bool bank();
     bool farm();
     bool retreat_if_hurt();
     void cast_on_camps(int group);
+    void cast_on_camps_unsafe(int group);
     bool attack_camp(int group);
     bool restore_attack();
     int capturer(const Group& g) const;

@@ -17,6 +17,8 @@ inline int cheb(vec2 a, vec2 b) { return static_cast<int>(a.chebyshev_distance(b
 inline const char* g_stage = "";
 inline int g_breaks = 0;      // channel breaks this game (trace counter)
 inline int g_break_kind = 0;  // Channel kind of the latest break
+inline int g_handoffs = 0;     // aggro handoff steps this game (trace counter)
+inline int g_ghost_turns = 0;  // turns a bag carrier steered by ghosts (trace counter)
 
 inline bitboard square(vec2 p, int r) {
     bitboard b;
@@ -116,8 +118,120 @@ inline constexpr bool PRISM_CARRIER = true;
 inline constexpr int PRISM_BANK_BAG = 70;
 inline constexpr int PRISM_SAFE_ROUNDS = 15;     // rounds since the last enemy sighting
 inline constexpr bool TEST_FORCE_PRISM = false;  // A/B only: draft Prism first
+// Help requests: a champion in a contested skirmish asks for backup through
+// shared memory; idle allies within reach walk over.
+// Off: measured 2026-10-20 it pulled farmers into late, piecemeal fights - mirror
+// 6/18, ~16-20 rounds slower vs the starters, 33 -> 40 deaths vs the old bot.
+// Byte 7 stays free; the repacked capture byte alone matches the old layout.
+inline constexpr bool HELP_CALLS = false;
+inline constexpr float HELP_MIN_RATIO = 0.6f;   // enemy power / ours that is worth calling for
+inline constexpr float HELP_MAX_RATIO = 2.5f;   // beyond this, backup arrives too late
+inline constexpr int HELP_RANGE = 22;           // answer calls this close (Chebyshev)
+inline constexpr float HELP_MIN_HP = 0.6f;      // only healthy allies answer
+// Draft synergy: Tavi buys shards anywhere and stuns to peel, so he pairs with a
+// front-liner (Marcella, Varg, Ryth) who screens him.
+// Measured 2026-10-20: mirror 11/18 (parity 9/18), old Python bot 453 -> 442
+// rounds, starters unchanged (deaths 10 -> 18 across both).
+inline constexpr bool DRAFT_SYNERGY = true;
+inline constexpr float SYNERGY_BONUS = 1.2f;
+// Score-aware play: far ahead, bank small bags to protect the lead; far behind,
+// bank bigger bags and stand and fight a loaded enemy instead of disengaging.
+// Measured 2026-10-20: the behind half changed nothing measurable (rarely 150
+// behind) -> off. Ahead half ungated: mirror 8/18, starter-python 15 rounds slower,
+// old bot 18 rounds faster. Gated on a recent enemy sighting: mirror 10/18,
+// starter-python 424 -> 419, starter-cpp and old bot level -> shipped.
+inline constexpr bool SCORE_POLICY = true;
+inline constexpr bool SCORE_AHEAD = true;    // ahead half: small banks
+inline constexpr bool SCORE_BEHIND = false;  // behind half: big banks, bounty fights
+inline constexpr int LEAD_MARGIN = 150;      // tributed-gem gap that counts as "far"
+inline constexpr int AHEAD_BANK_BAG = 20;
+inline constexpr int BEHIND_BANK_BAG = 60;
+inline constexpr int BEHIND_BOUNTY = 40;     // behind: fight an enemy carrying this many
+inline constexpr int AHEAD_THREAT_ROUNDS = 20;  // ahead: bank small only if an enemy was seen this recently
+// Endgame denial: once the enemy nears the 1,000-gem finish while ahead of us,
+// lock altars we pass and hunt loaded enemies instead of farming.
+inline constexpr bool ENDGAME_DENIAL = true;
+// Measured 2026-10-20, mirror vs the build without denial (parity 9/18):
+// 850 -> 12/18, 700 -> 14/18, 650 -> 13/18, 600 -> 14/18, 500 -> 13/18.
+// Starters and the old bot never trigger it (we are never behind a 700+ enemy).
+inline constexpr int DENY_ENEMY_GEMS = 700;  // enemy tributed gems that start denial
+inline constexpr int DENY_HUNT_BAG = 20;     // chase visible enemies carrying this many
+inline constexpr int DENY_CHASE_RANGE = 8;
+// Detour banking: tribute when an altar is nearly on the way to the next target,
+// measured as dist(me, altar) + dist(altar, target) - dist(me, target).
+// Measured 2026-10-20 (mirror parity 9/18): detour on top of the near-altar rule
+// 6/18 (too many trips); replacing it: detour<=2 8/18, <=4 13/18 (43 deaths vs ~56),
+// <=6 13/18, near rule simply removed 12/18. Cost: starter-python 419 -> 442
+// rounds; starter-cpp 427 -> 422, old bot 440 -> 437. Most of the gain is no
+// longer tributing tiny bags whenever an altar is within 4 tiles.
+inline constexpr bool DETOUR_BANKING = true;
+inline constexpr int DETOUR_MAX = 4;             // extra tiles worth walking to bank
+inline constexpr int DETOUR_MIN_BAG = 10;
+inline constexpr bool DETOUR_REPLACES_NEAR = true;  // drop the "altar within 4 tiles" rule
+// Counter-draft from the enemy's revealed picks: area damage punishes Cassi &
+// Issac (one kill takes both), divers punish two or more fragile ranged picks.
+// Off: measured 2026-10-20 it changed no picks in practice - our draft already
+// opens Varg / Cassi & Issac / Stellar (the AoE and dive answers), and early
+// picks are made before the enemy's are revealed. Mirror 8/18, others level.
+inline constexpr bool COUNTER_DRAFT = false;
+inline constexpr float COUNTER_BONUS = 1.0f;
+// Aggro handoff: awake camps hit the nearest champion within 3 tiles. When an
+// enemy closes in on a camp we are fighting, step so the enemy is nearer.
+// Off: measured 2026-10-20 mirror 9/18 (parity), starter-cpp 422 -> 443 and old
+// bot 437 -> 448 rounds - stepping back stalls our own clear more than the camp
+// hurts the enemy.
+inline constexpr bool AGGRO_HANDOFF = false;
+// Ghost tracking: an enemy that leaves vision is remembered for a few rounds as a
+// fading threat whose reach grows a tile per round. Only bag carriers use it.
+// Measured 2026-10-20: mirror 9/18 (parity), starter-cpp 422 -> 419,
+// starter-python 442 -> 430, old bot level (437/438, deaths 33 -> 31).
+inline constexpr bool GHOSTS = true;
+inline constexpr int GHOST_ROUNDS = 8;
+inline constexpr int GHOST_MAX_SLACK = 3;
+inline constexpr int GHOST_MIN_BAG = 10;
+inline constexpr bool GHOST_BANKING = true;  // a ghost near a 20+ bag also triggers threat banking
+// Pooled squads: for big hostile groups (elk herds) the squad rotates the tank, so
+// also try the pooled-health solve and take whichever needs fewer helpers.
+// The three switches below are OFF - measured 2026-10-20 against v13 on the
+// ladder maps they target: they beat the passive starters (stampede 360 -> 1080
+// gems) but lose to an opponent that fights back - our squad softens the elk
+// herd / monolith, takes deaths, and the opponent finishes it (stampede 0/2,
+// contest 0/2 vs v13). Dash-to-islands alone 1/2 on ambush (48-gem islands
+// pull champions away); pooled + dash together 2/2 on ambush only.
+inline constexpr bool POOLED_SQUADS = false;
+inline constexpr float SQUAD_POOL_SHARE = 0.60f;
+// Monoliths are fought anyway when they hold this share of the map's gems.
+inline constexpr bool MONOLITH_WHEN_DOMINANT = false;
+inline constexpr float MONOLITH_DOMINANT_SHARE = 0.5f;
+// Champions with a dash path over holes (dashes cross them) to reach walled-off
+// "island" camps; each hole crossing waits for the dash cooldown.
+inline constexpr bool DASH_ISLANDS = false;
+inline constexpr int DASH_TRIP_PENALTY = 8;
+// Vulture: when visible enemies are fighting a big hostile group (elk herd or
+// monolith) and it is nearly dead, go finish it and take the capture.
+// Off: measured 2026-10-20 mirror vs v13 16/34 (parity 17) - the opening (a big
+// group nearly dead with enemies on it, in our vision) almost never arises.
+inline constexpr bool VULTURE = false;
+inline constexpr float VULTURE_MIN_HP = 4000.f;    // "big": monolith or this much total health
+inline constexpr float VULTURE_HP_FRAC = 0.35f;    // swoop once it is below this share of health
+inline constexpr int VULTURE_RANGE = 12;           // how far we will travel for it
+inline constexpr int VULTURE_MAX_TURNS = 15;       // we must be able to finish it this fast
+// Carrier safety (v13 ladder: 47 deaths with 40+ gems handed 3,828 gems away).
+// Measured 2026-10-20 on the 14-map pool: all three together 15/28 vs v13 (alone:
+// split 11, safe altars 13, pvp banking 14); vs the old ganker bot 27/28 like
+// v13 but deaths 93 -> 80; elk_arena won both sides. Shipped together as v14.
+inline constexpr bool PVP_BANKING = true;       // bank smaller bags while enemies are active
+inline constexpr int PVP_BANK_BAG = 30;
+inline constexpr int PVP_RECENT_ROUNDS = 40;    // "active": an enemy seen this recently
+inline constexpr bool SAFE_ALTARS = true;       // skip altars with enemies (seen or remembered) near
+inline constexpr int ALTAR_THREAT_RANGE = 6;
+inline constexpr bool SPLIT_CAPTURES = true;    // allies share big rewards: smaller bags, shorter tributes
+inline constexpr int SPLIT_MIN_GEMS = 60;
 // Shopping.
-inline constexpr int SHOP_TRIP_GOLD = 150;
+// Tuned 2026-10-20 one at a time (mirror vs current, old bot rounds, baseline 438):
+// SHOP_TRIP_GOLD 100: 10/18, 434; 220: 7/18, 439. RECALL_SHOP_GOLD 180: 8/18, 455;
+// 400: 10/18, 477. BANK_BAG 36: 9/18, 436; 64: 9/18, 442 (48 kept: flat).
+inline constexpr int SHOP_TRIP_GOLD = 100;
 inline constexpr int RECALL_SHOP_GOLD = 270;
 inline constexpr int LOCK_MIN_GOLD = 40;
 }  // namespace Cfg
@@ -126,6 +240,7 @@ inline constexpr int LOCK_MIN_GOLD = 40;
 namespace Mem {
 inline constexpr int CLAIMS = 0;        // bytes 0..5: claimed group id + 1 per body
 inline constexpr int MAX_BODIES = 6;
-inline constexpr int CAPTURE_GROUP = 6; // group id + 1 of the latest capture
-inline constexpr int CAPTURE_ROUND = 7; // low byte of that capture's round
+inline constexpr int CAPTURE = 6;       // low 7 bits: captured group id + 1; top bit flips per capture
+inline constexpr int HELP = 7;          // low 7 bits: map sector + 1 of a fight asking for backup;
+                                        // top bit = round parity, rewritten every round while live
 }  // namespace Mem

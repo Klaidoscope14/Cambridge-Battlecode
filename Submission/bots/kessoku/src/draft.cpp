@@ -83,12 +83,34 @@ void play_draft() {
                 bc::draft::pick(p);
                 return;
             }
+    auto has = [&](CD p) { return std::find(ours.begin(), ours.end(), p) != ours.end(); };
+    std::vector<CD> theirs;
+    try {
+        theirs = bc::draft::current_draft(team::enemy);
+    } catch (...) {
+    }
+    auto they = [&](CD p) { return std::find(theirs.begin(), theirs.end(), p) != theirs.end(); };
+    const bool vs_linked = they(CD::cassi_and_issac);
+    int fragile_ranged = 0;
+    for (auto p : {CD::vesper_vale, CD::prism, CD::stellar, CD::willow, CD::tavi, CD::cassi_and_issac})
+        fragile_ranged += they(p) ? 1 : 0;
+    const bool frontliner = has(CD::marcella) || has(CD::varg) || has(CD::ryth);
     CD best = CD::vendetta;
     float best_score = -1.f;
     for (int i = 0; i < 11; ++i) {
         const auto pick = static_cast<CD>(i);
-        if (std::find(ours.begin(), ours.end(), pick) != ours.end()) continue;
-        const float s = score(pick, shape);
+        if (has(pick)) continue;
+        float s = score(pick, shape);
+        if (Cfg::COUNTER_DRAFT) {
+            if (vs_linked && (pick == CD::stellar || pick == CD::prism || pick == CD::varg || pick == CD::ryth))
+                s += Cfg::COUNTER_BONUS;
+            if (fragile_ranged >= 2 && (pick == CD::varg || pick == CD::ren || pick == CD::vendetta))
+                s += Cfg::COUNTER_BONUS;
+        }
+        if (Cfg::DRAFT_SYNERGY) {
+            if (pick == CD::tavi && frontliner) s += Cfg::SYNERGY_BONUS;
+            if ((pick == CD::marcella || pick == CD::varg || pick == CD::ryth) && has(CD::tavi)) s += 0.5f * Cfg::SYNERGY_BONUS;
+        }
         if (s > best_score) best_score = s, best = pick;
     }
 
