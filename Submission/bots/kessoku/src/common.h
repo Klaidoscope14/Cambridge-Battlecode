@@ -157,6 +157,9 @@ inline constexpr bool ENDGAME_DENIAL = true;
 inline constexpr int DENY_ENEMY_GEMS = 700;  // enemy tributed gems that start denial
 inline constexpr int DENY_HUNT_BAG = 20;     // chase visible enemies carrying this many
 inline constexpr int DENY_CHASE_RANGE = 8;
+inline constexpr int DENY_LOCK_BAG = 0;    // denial locks only with an enemy carrying this many near the altar, 0 = always (10: 12/28 vs v15)
+inline constexpr int DENY_LOCK_RANGE = 6;
+inline constexpr bool SAFE_FALLBACK = false;  // no safe route: step to the least-exposed progressing tile (13/28 vs v15)
 // Detour banking: tribute when an altar is nearly on the way to the next target,
 // measured as dist(me, altar) + dist(altar, target) - dist(me, target).
 // Measured 2026-10-20 (mirror parity 9/18): detour on top of the near-altar rule
@@ -189,6 +192,7 @@ inline constexpr bool GHOSTS = true;
 inline constexpr int GHOST_ROUNDS = 8;
 inline constexpr int GHOST_MAX_SLACK = 3;
 inline constexpr int GHOST_MIN_BAG = 10;
+inline constexpr int GHOST_POWER = 1;  // ghosts in side_power: 0 off, 1 while carrying a bag (17/28 vs v14), 2 always (14/28)
 inline constexpr bool GHOST_BANKING = true;  // a ghost near a 20+ bag also triggers threat banking
 // Pooled squads: for big hostile groups (elk herds) the squad rotates the tank, so
 // also try the pooled-health solve and take whichever needs fewer helpers.

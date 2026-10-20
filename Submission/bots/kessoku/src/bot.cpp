@@ -339,6 +339,7 @@ bool Bot::move_to(bitboard goals, bool allow_dash) {
         field.compute_to(blocked | (danger & ~goals), goals, origin, visited);
         here_d = field.get(pos);
     }
+    const bool unsafe = here_d == UNREACH && !danger.is_empty();  // no safe route exists
     if (here_d == UNREACH) {
         bitboard visited;
         field.compute_to(blocked, goals, origin, visited);
@@ -379,6 +380,18 @@ bool Bot::move_to(bitboard goals, bool allow_dash) {
     auto steps = blocked.reachable_tiles(pos, static_cast<std::uint16_t>(me.base_stats().base_move_speed)).positions();
     std::sort(steps.begin(), steps.end(), [&](vec2 a, vec2 b) { return field.get(a) < field.get(b); });
     const auto cur = field.get(pos);
+    // Forced through danger: of the steps that make progress, take the least exposed.
+    if (Cfg::SAFE_FALLBACK && unsafe) {
+        std::erase_if(steps, [&](vec2 t) { return field.get(t) >= cur; });
+        std::vector<float> burst;
+        for (auto t : steps) burst.push_back(burst_at(t));
+        std::vector<std::size_t> order(steps.size());
+        for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+        std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return burst[a] < burst[b]; });
+        std::vector<vec2> sorted;
+        for (auto i : order) sorted.push_back(steps[i]);
+        steps = sorted;
+    }
     int tries = 0;
     for (auto t : steps) {
         if (field.get(t) >= cur || ++tries > 3) break;
@@ -780,6 +793,11 @@ float Bot::side_power(vec2 at, bool enemy) const {
     if (enemy) {
         for (const auto& f : foes)
             if (cheb(f.pos, at) <= Cfg::SKIRMISH_RANGE) hp += f.hp, dps += f.strength + f.spell / 8.f;
+        // Enemies that just stepped out of sight still join the fight, faded by age.
+        if (Cfg::GHOST_POWER == 2 || (Cfg::GHOST_POWER == 1 && use_ghosts))
+            for (const auto& g : ghosts)
+                if (g.seen != round && cheb(g.pos, at) <= Cfg::SKIRMISH_RANGE + g.slack)
+                    hp += g.weight * g.hp, dps += g.weight * (g.strength + g.spell / 8.f);
     } else {
         auto& me = bc::self();
         hp = my_hp, dps = me.strength() + 0.25f * me.focus();
@@ -1071,6 +1089,12 @@ bool Bot::deny() {
     if (lock.count() > 0)
         for (auto a : altar_tiles) {
             if (cheb(a, pos) > 2 || bc::vision::has_altar_lock(a)) continue;
+            if (Cfg::DENY_LOCK_BAG > 0) {  // keep the lock for an altar a loaded enemy is heading to
+                bool carrier = false;
+                for (const auto& f : foes) carrier = carrier || (f.gems >= Cfg::DENY_LOCK_BAG && cheb(f.pos, a) <= Cfg::DENY_LOCK_RANGE);
+                for (const auto& g : ghosts) carrier = carrier || (g.gems >= Cfg::DENY_LOCK_BAG && cheb(g.pos, a) <= Cfg::DENY_LOCK_RANGE + g.slack);
+                if (!carrier) continue;
+            }
             try {
                 if (lock.use(a)) break;
             } catch (...) {
@@ -1082,8 +1106,11 @@ bool Bot::deny() {
         if (f.gems >= Cfg::DENY_HUNT_BAG && cheb(f.pos, pos) <= Cfg::DENY_CHASE_RANGE && (!prey || f.gems > prey->gems))
             prey = &f;
     if (!prey) return false;
-    if (!me.attack_tiles().is_set(prey->pos)) move_to(square(prey->pos, me.attack_range()));
-    fight_enemies();
+    try {  // the prey can die or vanish mid-turn (error 5 / 97)
+        if (!me.attack_tiles().is_set(prey->pos)) move_to(square(prey->pos, me.attack_range()));
+        fight_enemies();
+    } catch (...) {
+    }
 #ifdef KSK_TRACE
     std::cout << "DENY R" << round << " " << bc::to_string(kind) << " prey_gems=" << prey->gems << "\n";
 #endif
