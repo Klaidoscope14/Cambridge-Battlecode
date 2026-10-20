@@ -38,7 +38,7 @@ MapShape read_shape() {
 float score(CD pick, const MapShape& m) {
     float v = 0.f;
     switch (pick) {
-        case CD::cassi_and_issac: v = 9.6f; break;  // two farming bodies from one pick
+        case CD::cassi_and_issac: v = Cfg::PAIR_DRAFT_SCORE; break;  // two farming bodies from one pick
         case CD::vendetta: v = 9.0f + (m.area >= 4000 ? 0.4f : 0.f); break;
         case CD::varg: v = 8.2f + 2.0f * m.cluster; break;
         case CD::stellar: v = 7.9f + 1.6f * m.cluster; break;

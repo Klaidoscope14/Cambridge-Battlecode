@@ -40,6 +40,26 @@ inline constexpr float CLAIMED_PENALTY = 0.30f;
 inline constexpr float ENEMY_NEAR_PENALTY = 0.40f;
 inline constexpr float SWITCH_MARGIN = 1.30f;
 inline constexpr int RETARGET_EVERY = 4;  // rounds between full target re-scores
+// Fuel (100x100 maps ran out mid-turn ~300 times a game on 01big_world): skip a re-score or
+// the detour field when this turn cannot afford it, cache the detour field per target, and
+// optionally re-score less often on big maps.
+// Measured v20 vs v19 (21 maps): cache only 21/42, 9-map fuel events 728 -> 263 (big_world
+// 467 -> 38); + guard 20/42, events 150; + re-score every 8 on big maps 18/42.
+inline constexpr bool FUEL_GUARD = false;
+// Cassi & Issac (review F4): one death kills both halves and pays out both bags; on the
+// ladder the pair took 52% of our body-deaths.
+// Measured v21 vs v20 (21 maps): retreat 0.50 26/42, deaths vs old bot 94 -> 80 (pair 0.69 -> 0.57
+// per game), zlock2 13/16; 0.45 23/42, 0.40 21/42, 0.45 + min-HP 22/42; min-HP alone 21/42;
+// together x1.5 22/42; draft score 8.1 drops the pick entirely: 15/42.
+inline constexpr float PAIR_RETREAT_HP = 0.50f;      // retreat threshold for each half (RETREAT_HP otherwise)
+inline constexpr bool PAIR_MIN_HP = false;           // retreat on the lower of the two halves' health
+inline constexpr float PAIR_TOGETHER_BONUS = 1.0f;   // score bonus for the group the other half claims
+inline constexpr float PAIR_DRAFT_SCORE = 9.6f;      // draft value of the pick
+inline constexpr int FUEL_RESCORE_MIN = 60000;  // a 100x100 re-score costs ~45K
+inline constexpr int FUEL_DETOUR_MIN = 40000;   // a 100x100 detour field costs ~27K
+inline constexpr bool DETOUR_CACHE = true;
+inline constexpr int BIG_MAP_AREA = 6400;       // 80x80 and up
+inline constexpr int RETARGET_EVERY_BIG = 4;
 inline constexpr float SQUAD_CLAIM_BONUS = 0.5f;  // per ally already committed to a squad target
 inline constexpr int SQUAD_WAIT_RING = 5;         // wait this far from monsters (they reach 3)
 inline constexpr int SQUAD_REGROUP_TURNS = 12;    // then move to the best-supported squad target
@@ -57,6 +77,21 @@ inline constexpr bool SAFE_RECALL = true;      // hurt since last turn: walk hom
 inline constexpr bool DEATH_AVOID = true;      // after dying, skip the groups near where we fell
 inline constexpr int DEATH_AVOID_RANGE = 4;   // 6: 21/42
 inline constexpr int DEATH_AVOID_ROUNDS = 150;  // includes the 60-turn respawn (80/250 at range 6: 23/24 of 42)
+// Hostile-review fixes (HostileReview.md, 2026-10-20). F1: altar siege flip-flop - an altar
+// with an enemy seen near it stays threatened for ALTAR_HOT_ROUNDS (ghosts expire in 8, so
+// carriers turned back and forth between two camped altars); heal at CALM_HEAL_HP when nothing
+// is near (champions idled at 31-35% HP); no banking for ESCAPE_BANK_EMBARGO rounds after
+// escaping with a bag. F2: walk up and break enemy altar locks (3 basic attacks).
+// F3: only reachable altars count as a safe alternative (collision's second altar is walled off).
+// F7a: a dead champion clears its claim byte. F7b: a gold/gem jump only counts as a capture
+// on the group we were holding (a kill bounty on a camp tile used to broadcast a capture).
+inline constexpr int ALTAR_HOT_ROUNDS = 60;
+inline constexpr float CALM_HEAL_HP = 0.50f;
+inline constexpr int ESCAPE_BANK_EMBARGO = 20;
+inline constexpr bool CLEAR_ENEMY_LOCKS = true;
+inline constexpr bool REACHABLE_ANY_SAFE = true;
+inline constexpr bool DEAD_CLEARS_CLAIM = false;  // measured: our deaths 190 -> 359 vs v18 (wins 24 vs 25 of 42)
+inline constexpr bool CAPTURE_NEEDS_HOLD = false; // measured: 27 -> 25 of 42 vs v18
 inline constexpr int THREAT_BANK_BAG = 10;     // bank this early when outmatched
 inline constexpr int THREAT_BANK_RANGE = 8;
 // Channel breaking: worth of interrupting each enemy channel (plus bag / 50).

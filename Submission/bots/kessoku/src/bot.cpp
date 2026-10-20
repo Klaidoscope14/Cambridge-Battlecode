@@ -104,6 +104,12 @@ void Bot::init() {
     for (const auto& c : bc::champions(team::ally)) types.push_back(static_cast<int>(c.champion_name()));
     std::sort(types.begin(), types.end());
     body = static_cast<int>(std::find(types.begin(), types.end(), static_cast<int>(kind)) - types.begin());
+    // Cassi and Issac die together: remember the other half's claim slot.
+    paired = kind == bc::champion_type::cassi || kind == bc::champion_type::issac;
+    if (paired) {
+        partner_type = static_cast<int>(kind == bc::champion_type::cassi ? bc::champion_type::issac : bc::champion_type::cassi);
+        partner_body = std::min(static_cast<int>(std::find(types.begin(), types.end(), partner_type) - types.begin()), Mem::MAX_BODIES - 1);
+    }
     body = std::min(body, Mem::MAX_BODIES - 1);
     bodies = static_cast<int>(types.size());
 
@@ -527,6 +533,8 @@ float Bot::group_score(int id, int dist, int* req_out) const {
     if (g.strength <= 0.f && claims > 0) value *= Cfg::CLAIMED_PENALTY;
     else if (crew > 0) value /= static_cast<float>(1 + crew);
     if (req > 0) value *= 1.f + Cfg::SQUAD_CLAIM_BONUS * std::min(claims, req);  // converge on one squad target
+    if (paired && Cfg::PAIR_TOGETHER_BONUS > 1.f && mem[Mem::CLAIMS + partner_body] == id + 1)
+        value *= Cfg::PAIR_TOGETHER_BONUS;  // the two halves fight side by side
     for (const auto& f : foes)
         if (cheb(f.pos, g.tiles.front()) <= 5) {
             // Never walk into a stronger enemy group; share a contested camp reluctantly.
@@ -574,7 +582,13 @@ int Bot::choose_target() {
         const auto& g = groups[static_cast<std::size_t>(target)];
         if (g.respawn_at <= round + 2 && round >= g.skip_until) return target;
     }
-    next_eval = round + Cfg::RETARGET_EVERY;
+    // A re-score walks the whole map (~45K fuel on 100x100): when this turn cannot
+    // afford it, keep a still-valid target and try again next turn.
+    if (Cfg::FUEL_GUARD && target >= 0 && bc::fuel_remaining() < static_cast<std::uint64_t>(Cfg::FUEL_RESCORE_MIN)) {
+        const auto& g = groups[static_cast<std::size_t>(target)];
+        if (g.respawn_at <= round + 2 && round >= g.skip_until) return target;
+    }
+    next_eval = round + (W * H >= Cfg::BIG_MAP_AREA ? Cfg::RETARGET_EVERY_BIG : Cfg::RETARGET_EVERY);
     {
         bitboard visited, origin;
         origin.set(pos, true);
@@ -645,14 +659,19 @@ int Bot::choose_target() {
 
     // How far off the route to the target is the best altar? `here` is fresh.
     detour = 1 << 20;
-    if (Cfg::DETOUR_BANKING && target >= 0 && bc::self().gem_count() >= static_cast<unsigned>(Cfg::DETOUR_MIN_BAG)) {
+    if (Cfg::DETOUR_BANKING && target >= 0 && bc::self().gem_count() >= static_cast<unsigned>(Cfg::DETOUR_MIN_BAG)
+        && (!Cfg::FUEL_GUARD || detour_group == target || bc::fuel_remaining() >= static_cast<std::uint64_t>(Cfg::FUEL_DETOUR_MIN))) {
         const auto& g = groups[static_cast<std::size_t>(target)];
         int direct = UNREACH;
         for (auto t : g.tiles) direct = std::min<int>(direct, here.get(t));
         if (direct < UNREACH) {
-            bc::distance_field from_target;
-            bitboard visited;
-            from_target.compute(terrain, g.spawn & ~terrain, visited);
+            // Terrain is static, so the field from a target is reused until the target changes.
+            if (!Cfg::DETOUR_CACHE || detour_group != target) {
+                bitboard visited;
+                detour_field.compute(terrain, g.spawn & ~terrain, visited);
+                detour_group = Cfg::DETOUR_CACHE ? target : -1;
+            }
+            const auto& from_target = detour_field;
             int via = 1 << 20;
             for (auto x : tribute_tiles) {
                 const int a = here.get(x), b = from_target.get(x);
@@ -697,6 +716,10 @@ void Bot::assess_threat() {
         }
         foes.push_back(f);
     }
+    if (altar_hot.size() != altar_tiles.size()) altar_hot.assign(altar_tiles.size(), -1000);
+    for (std::size_t i = 0; i < altar_tiles.size(); ++i)
+        for (const auto& f : foes)
+            if (cheb(f.pos, altar_tiles[i]) <= Cfg::ALTAR_THREAT_RANGE) altar_hot[i] = round;
     // Ghosts: refresh from what we see, age the rest, drop cleared or stale ones.
     if (Cfg::GHOSTS) {
         for (const auto& f : foes) {
@@ -1354,7 +1377,17 @@ void Bot::use_support_abilities() {
 
 bool Bot::retreat_if_hurt() {
     auto& me = bc::self();
-    if (me.health() >= Cfg::RETREAT_HP * me.max_health()) return false;
+    bool calm = foes.empty() && capture_group < 0;
+    for (const auto& c : camps)
+        if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= 5) calm = false;
+    const float base_floor = paired ? std::max(Cfg::RETREAT_HP, Cfg::PAIR_RETREAT_HP) : Cfg::RETREAT_HP;
+    const float floor_hp = calm ? std::max(Cfg::CALM_HEAL_HP, base_floor) : base_floor;
+    float frac = me.health() / std::max(me.max_health(), 1.f);
+    // One death kills both halves: when the other half is low, both go home.
+    if (paired && Cfg::PAIR_MIN_HP)
+        for (const auto& m : mates)
+            if (m.type == partner_type) frac = std::min(frac, m.hp / m.max_hp);
+    if (frac >= floor_hp) return false;
     if (ally_spawn.is_set(pos)) return true;  // heal at turn end
 
     // Tribute ignores damage, so a bag next to an altar is banked even now.
@@ -1428,17 +1461,41 @@ bool Bot::bank() {
     // Altars with enemies near them (seen now or remembered) are where carriers die.
     auto threatened = [&](vec2 a) {
         if (!Cfg::SAFE_ALTARS) return false;
+        for (std::size_t i = 0; i < altar_tiles.size() && i < altar_hot.size(); ++i)
+            if (altar_tiles[i] == a && round - altar_hot[i] <= Cfg::ALTAR_HOT_ROUNDS) return true;  // campers do not leave in 8 rounds
         for (const auto& f : foes)
             if (cheb(f.pos, a) <= Cfg::ALTAR_THREAT_RANGE) return true;
         for (const auto& g : ghosts)
             if (g.seen != round && cheb(g.pos, a) <= Cfg::ALTAR_THREAT_RANGE + g.slack) return true;
         return false;
     };
+    // Only altars we can actually walk to count as a safe alternative.
+    auto reachable = [&](vec2 a) {
+        for (auto t : (square(a, bc::constants::submit_gems_range) & ~terrain).positions())
+            if (spawn_field.get(t) < UNREACH) return true;
+        return false;
+    };
     bool any_safe = false;
-    for (auto a : altar_tiles) any_safe = any_safe || !threatened(a);
+    for (auto a : altar_tiles) any_safe = any_safe || (!threatened(a) && (!Cfg::REACHABLE_ANY_SAFE || reachable(a)));
     bitboard goals;
     for (auto a : altar_tiles) {
-        if (bc::vision::has_altar_lock(a) && bc::vision::altar_lock_at(a).is_enemy()) continue;
+        if (bc::vision::has_altar_lock(a) && bc::vision::altar_lock_at(a).is_enemy()) {
+            if (!Cfg::CLEAR_ENEMY_LOCKS) continue;
+            // A lock never expires: three basic attacks are the only way to bank here again.
+            const int reach = static_cast<int>(me.attack_range());
+            if (cheb(a, pos) <= reach) {
+                if (me.can_attack()) {
+                    try {
+                        me.attack(bc::vision::altar_lock_at(a));
+                        acted_attack = true;
+                    } catch (...) {
+                    }
+                }
+                return true;
+            }
+            goals |= square(a, reach) & ~terrain;
+            continue;
+        }
         if (any_safe && threatened(a) && cheb(a, pos) > bc::constants::submit_gems_range) continue;
         if (cheb(a, pos) <= bc::constants::submit_gems_range) {
             try {
@@ -1608,6 +1665,7 @@ void Bot::play_turn() {
                     g.skip_until = std::max(g.skip_until, now + Cfg::DEATH_AVOID_ROUNDS);
         }
         g_stage = "dead";
+        if (Cfg::DEAD_CLEARS_CLAIM) write_claim(-1);  // allies must not count a dead body in a squad
         shop();
         last_gems = 0;
         last_gold = me.gold_count();
@@ -1643,7 +1701,7 @@ void Bot::play_turn() {
     const bool gone = capture_group >= 0 && groups[static_cast<std::size_t>(capture_group)].respawn_at > round;
     if (paid || gone || (capture_group >= 0 && !groups[static_cast<std::size_t>(capture_group)].spawn.is_set(pos))) {
         const int g = group_of(pos);
-        if (paid && g >= 0) {
+        if (paid && g >= 0 && (!Cfg::CAPTURE_NEEDS_HOLD || g == capture_group)) {
             auto& grp = groups[static_cast<std::size_t>(g)];
             grp.respawn_at = round + grp.max_respawn;
             grp.reward = false;
@@ -1684,6 +1742,8 @@ void Bot::play_turn() {
             && (nearest <= Cfg::LOSING_RANGE || (nearest <= 6 && me.gem_count() >= static_cast<unsigned>(Cfg::THREAT_BANK_BAG)));
         if (lethal || losing) {
             g_stage = "escape";
+            if (Cfg::ESCAPE_BANK_EMBARGO > 0 && me.gem_count() > 0)
+                bank_blocked_until = std::max(bank_blocked_until, round + Cfg::ESCAPE_BANK_EMBARGO);
             fight_enemies(ranged);  // melee strikes then walks; ranged only for a kill
             std::erase_if(foes, [&](const Foe& f) {
                 const auto& e = enemies[static_cast<std::size_t>(f.index)];

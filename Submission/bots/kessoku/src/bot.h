@@ -57,6 +57,8 @@ struct Mate {
 class Bot {
     bool ready = false;
     int body = 0;          // stable index into the shared-memory claim bytes
+    bool paired = false;   // Cassi or Issac: one death kills both halves
+    int partner_type = -1, partner_body = 0;
     int bodies = 1;        // allied champion bodies (Cassi & Issac count twice)
     bool ranged = false;
     bc::champion_type kind{};
@@ -78,6 +80,8 @@ class Bot {
     std::vector<vec2> tribute_tiles;  // tiles a champion can tribute from
     int detour = 1 << 20;        // extra tiles to bank on the way to the target
     int detour_round = -1000;
+    bc::distance_field detour_field;  // distance from detour_group's spawn tiles
+    int detour_group = -1;
     bool mono_dominant = false;  // monoliths hold most of the map's gems
     bool dasher = false;         // we have a dash ability
     bool islands = false;        // some camp group cannot be walked to from our spawn
@@ -97,6 +101,7 @@ class Bot {
     std::vector<float> live_hp;     // visible living camp health per group, -1 if unseen
     std::vector<vec2> enemy_pos;
     std::vector<Foe> foes;
+    std::vector<int> altar_hot;  // per altar: last round an enemy was seen near it
     std::vector<Foe> ghosts;  // remembered enemies out of vision (index unused)
     bool use_ghosts = false;  // this turn: we carry a bag worth protecting
     bitboard visible_now;
