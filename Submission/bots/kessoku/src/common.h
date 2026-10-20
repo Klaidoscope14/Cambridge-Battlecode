@@ -52,6 +52,14 @@ inline constexpr bool FUEL_GUARD = false;
 // per game), zlock2 13/16; 0.45 23/42, 0.40 21/42, 0.45 + min-HP 22/42; min-HP alone 21/42;
 // together x1.5 22/42; draft score 8.1 drops the pick entirely: 15/42.
 inline constexpr float PAIR_RETREAT_HP = 0.50f;      // retreat threshold for each half (RETREAT_HP otherwise)
+// Review F6: melee champions walk at a ranged poker within POKER_RANGE when allies are close and
+// our side is stronger. F7d: also retreat when health < BURST_RETREAT_MULT x the damage aimed at
+// us this turn (enemy burst + awake camps within 3); 0 disables.
+// Measured v22 vs v21: chase 25/42 (deaths 212 vs 265), vs the ranged-poker bot zpoke 22 -> 28/42;
+// burst retreat 1.0/1.5: 24/23 of 42, more deaths vs the old bot (80 -> 93/95) -> off.
+inline constexpr bool MELEE_CHASE_POKERS = true;
+inline constexpr int POKER_RANGE = 4;
+inline constexpr float BURST_RETREAT_MULT = 0.f;
 inline constexpr bool PAIR_MIN_HP = false;           // retreat on the lower of the two halves' health
 inline constexpr float PAIR_TOGETHER_BONUS = 1.0f;   // score bonus for the group the other half claims
 inline constexpr float PAIR_DRAFT_SCORE = 9.6f;      // draft value of the pick

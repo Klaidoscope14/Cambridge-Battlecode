@@ -938,6 +938,21 @@ bool Bot::fight_enemies(bool kills_only) {
                 for (auto t : goal.positions()) safe = safe || burst_at(t) < 0.5f * my_hp;
                 if (safe && move_to(goal, false)) break;
             }
+        // A ranged poker (range 3) out-trades a melee farmer that ignores it: with allies
+        // close and the fight in our favour, walk at it instead of eating free hits.
+        if (Cfg::MELEE_CHASE_POKERS && !any && me.can_move()) {
+            int near_allies = 0;
+            for (const auto& m : mates) near_allies += cheb(m.pos, pos) <= Cfg::SKIRMISH_RANGE;
+            const bool favoured = side_power(pos, true) < side_power(pos, false);
+            if (near_allies > 0 && favoured)
+                for (const auto* f : order) {
+                    if (!f->ranged || cheb(f->pos, pos) > Cfg::POKER_RANGE) continue;
+                    bitboard goal = square(f->pos, 1);
+                    bool safe = false;
+                    for (auto t : (square(pos, 1) & ~terrain).positions()) safe = safe || burst_at(t) < 0.5f * my_hp;
+                    if (safe && move_to(goal, false)) break;
+                }
+        }
     }
 
     // Ranged with a ready reset: step into range of a target we can finish, then fire.
@@ -1387,7 +1402,16 @@ bool Bot::retreat_if_hurt() {
     if (paired && Cfg::PAIR_MIN_HP)
         for (const auto& m : mates)
             if (m.type == partner_type) frac = std::min(frac, m.hp / m.max_hp);
-    if (frac >= floor_hp) return false;
+    // Retreat earlier when the damage aimed at us this turn would take us under:
+    // a 6-elk herd hits ~360 a round, more than a 900-HP champion has left at 31%.
+    bool burst_low = false;
+    if (Cfg::BURST_RETREAT_MULT > 0.f) {
+        float incoming = burst_here;
+        for (const auto& c : camps)
+            if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= 3) incoming += c.strength();
+        burst_low = me.health() < Cfg::BURST_RETREAT_MULT * incoming;
+    }
+    if (frac >= floor_hp && !burst_low) return false;
     if (ally_spawn.is_set(pos)) return true;  // heal at turn end
 
     // Tribute ignores damage, so a bag next to an altar is banked even now.
