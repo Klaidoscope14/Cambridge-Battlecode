@@ -494,7 +494,7 @@ int Bot::required_helpers(const Group& g) const {
         // Tanks rotate out when hurt, so the squad shares the damage: (1+h)^2 >= solo / pool.
         const float pool = Cfg::SQUAD_POOL_SHARE * my_max;
         const int h = std::max(1, static_cast<int>(std::ceil(std::sqrt(solo / pool))) - 1);
-        if (h < bodies && (best < 0 || h < best)) best = h;
+        if (h < bodies && h <= Cfg::SQUAD_POOL_MAX_HELPERS && (best < 0 || h < best)) best = h;
     }
     return best;
 }
@@ -1390,6 +1390,7 @@ bool Bot::should_bank() const {
     auto& me = bc::self();
     const int bag = static_cast<int>(me.gem_count());
     if (bag == 0) return false;
+    if (Cfg::BLOCKED_ALTAR_FARM && round < bank_blocked_until) return false;  // no way to an altar: keep earning gold
     if (bc::global_submitted_gems(team::ally) + bag >= bc::constants::winning_gems) return true;
     if (round + 40 >= static_cast<int>(bc::constants::max_rounds)) return true;
     const bool carrier = Cfg::PRISM_CARRIER && kind == bc::champion_type::prism;
@@ -1446,7 +1447,13 @@ bool Bot::bank() {
         }
         goals |= square(a, bc::constants::submit_gems_range);
     }
-    move_to(goals);
+    if (move_to(goals)) return true;
+    // Every tribute tile walled off or occupied (boss_battle: the boss camp sits on
+    // the only way in): banking is impossible for now, so farm instead.
+    if (Cfg::BLOCKED_ALTAR_FARM && me.can_move()) {
+        bank_blocked_until = round + Cfg::BLOCKED_ALTAR_ROUNDS;
+        return false;
+    }
     return true;
 }
 
@@ -1480,6 +1487,7 @@ bool Bot::farm() {
         return false;
     }
     auto& g = groups[static_cast<std::size_t>(gid)];
+    if (gid != empty_group) empty_group = gid, empty_turns = 0;
 
     bool alive = false;
     for (const auto& c : camps)
@@ -1561,6 +1569,17 @@ bool Bot::farm() {
 
     bitboard near;
     for (auto t : g.tiles) near |= square(t, 1);
+    // Nothing visible to fight or capture although we are next to it: the camps
+    // cannot respawn under an ally standing on the region (who may be boxed in
+    // by us), so give up on it for a while instead of crowding it.
+    if (Cfg::EMPTY_GROUP_SKIP && near.is_set(pos)) {
+        if (++empty_turns > Cfg::EMPTY_GROUP_TURNS) {
+            g.skip_until = round + Cfg::EMPTY_GROUP_SKIP_ROUNDS;
+            target = -1;
+            empty_turns = 0;
+            return false;
+        }
+    }
     move_to(near);
     return true;
 }
@@ -1723,10 +1742,12 @@ void Bot::play_turn() {
 
     g_stage = "bank";
     if (should_bank() && (!fighting || me.gem_count() >= 100)) {
-        bank();
-        return;
+        if (bank() || !Cfg::BLOCKED_ALTAR_FARM) return;
     }
-    if (!fighting && me.gem_count() == 0 && wants_shop()) {
+    // A bag that cannot be banked is no reason to skip shopping (spent gold still
+    // counts in the gold tiebreak).
+    const bool bag_stuck = Cfg::BLOCKED_ALTAR_FARM && round < bank_blocked_until;
+    if (!fighting && (me.gem_count() == 0 || bag_stuck) && wants_shop()) {
         if (spawn_field.get(pos) <= 10) {
             if (move_to(ally_spawn)) return;
         } else if (me.gold_count() >= static_cast<unsigned>(Cfg::RECALL_SHOP_GOLD) && enemies.empty()) {

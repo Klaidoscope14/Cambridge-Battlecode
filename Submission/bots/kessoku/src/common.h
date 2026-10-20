@@ -202,8 +202,13 @@ inline constexpr bool GHOST_BANKING = true;  // a ghost near a 20+ bag also trig
 // herd / monolith, takes deaths, and the opponent finishes it (stampede 0/2,
 // contest 0/2 vs v13). Dash-to-islands alone 1/2 on ambush (48-gem islands
 // pull champions away); pooled + dash together 2/2 on ambush only.
-inline constexpr bool POOLED_SQUADS = false;
+// Pooled squads back ON 2026-10-20 (v16) for the 21-map ladder pool (stampede is
+// gone): capped at 3 helpers, 30/42 vs v15 and 40/42 vs the old bot. It unlocks the
+// 168-gem groups on islands (v15 got 0 gems there) and elk_arena/corridors herds;
+// uncapped, eight's herds asked for 5 of 6 bodies and the squads deadlocked.
+inline constexpr bool POOLED_SQUADS = true;
 inline constexpr float SQUAD_POOL_SHARE = 0.60f;
+inline constexpr int SQUAD_POOL_MAX_HELPERS = 3;  // pooled solve asks for at most this many helpers (cap 1/2/3/4/none vs v15: 24/27/30/25/26 of 42)
 // Monoliths are fought anyway when they hold this share of the map's gems.
 inline constexpr bool MONOLITH_WHEN_DOMINANT = false;
 inline constexpr float MONOLITH_DOMINANT_SHARE = 0.5f;
@@ -231,6 +236,17 @@ inline constexpr bool SAFE_ALTARS = true;       // skip altars with enemies (see
 inline constexpr int ALTAR_THREAT_RANGE = 6;
 inline constexpr bool SPLIT_CAPTURES = true;    // allies share big rewards: smaller bags, shorter tributes
 inline constexpr int SPLIT_MIN_GEMS = 60;
+// Empty-group skip: a target next to us with no visible live camps and no reward
+// is skipped for a while. Fixes a full-game deadlock on boss_battle (a capturer on
+// the spawn tile boxed in by allies waiting for camps that cannot respawn under him).
+inline constexpr bool EMPTY_GROUP_SKIP = true;
+inline constexpr int EMPTY_GROUP_TURNS = 4;
+inline constexpr int EMPTY_GROUP_SKIP_ROUNDS = 20;
+// Blocked altars: when no tribute tile can be walked to (all walled off or occupied),
+// stop trying to bank for a while and keep farming gold - the tiebreak.
+// Measured v17: boss_battle gold 1-4K -> 60-70K, 8/8 vs v16/starters/old bot; 24/42 vs v16 overall.
+inline constexpr bool BLOCKED_ALTAR_FARM = true;
+inline constexpr int BLOCKED_ALTAR_ROUNDS = 25;
 // Shopping.
 // Tuned 2026-10-20 one at a time (mirror vs current, old bot rounds, baseline 438):
 // SHOP_TRIP_GOLD 100: 10/18, 434; 220: 7/18, 439. RECALL_SHOP_GOLD 180: 8/18, 455;

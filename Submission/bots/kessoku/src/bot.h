@@ -86,6 +86,8 @@ class Bot {
     int help_fresh = -1000;      // round the help byte last changed
     bool help_mine = false;      // we wrote the current request
     int capture_group = -1;
+    int empty_group = -1, empty_turns = 0;  // turns next to a target showing nothing to do
+    int bank_blocked_until = -1;  // no reachable tribute tile until this round
     unsigned last_gems = 0;
     unsigned last_gold = 0;
     bool acted_attack = false;
