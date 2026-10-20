@@ -1382,6 +1382,9 @@ bool Bot::retreat_if_hurt() {
         return true;
     }
     if (spawn_field.get(pos) <= 6 && move_to(ally_spawn)) return true;
+    // Hit since last turn with nobody in sight (a bush ambusher, a ranged poke):
+    // a recall would be broken by the next hit, so walk home instead.
+    if (Cfg::SAFE_RECALL && me.health() < prev_hp && move_to(ally_spawn)) return true;
     me.recall();
     return true;
 }
@@ -1595,6 +1598,15 @@ void Bot::play_turn() {
     }
     // Dead champions only get to shop; most unit reads are invalid while dead.
     if (!me.is_alive()) {
+        // Just died: the groups around where we fell are held by a stronger enemy;
+        // farm elsewhere for a while instead of walking back into the same fight.
+        if (Cfg::DEATH_AVOID && !dead_noted) {
+            dead_noted = true;
+            const int now = static_cast<int>(bc::round_number());
+            for (auto& g : groups)
+                if (cheb(g.tiles.front(), pos) <= Cfg::DEATH_AVOID_RANGE)
+                    g.skip_until = std::max(g.skip_until, now + Cfg::DEATH_AVOID_ROUNDS);
+        }
         g_stage = "dead";
         shop();
         last_gems = 0;
@@ -1603,8 +1615,10 @@ void Bot::play_turn() {
         target = -1;
         return;
     }
+    dead_noted = false;
     g_stage = "observe";
     observe();
+    struct HpMark { Bot* b; ~HpMark() { b->prev_hp = bc::self().health(); } } hp_mark_{this};
     if (Cfg::SCORE_POLICY) {
         const int gap = static_cast<int>(bc::global_submitted_gems(team::ally)) - static_cast<int>(bc::global_submitted_gems(team::enemy));
         standing = gap >= Cfg::LEAD_MARGIN && Cfg::SCORE_AHEAD ? 1 : gap <= -Cfg::LEAD_MARGIN && Cfg::SCORE_BEHIND ? -1 : 0;
@@ -1667,7 +1681,7 @@ void Bot::play_turn() {
         if (standing < 0)
             for (const auto& f : foes) bounty = bounty || f.gems >= Cfg::BEHIND_BOUNTY;
         const bool losing = outmatched && !bounty
-            && (nearest <= 4 || (nearest <= 6 && me.gem_count() >= static_cast<unsigned>(Cfg::THREAT_BANK_BAG)));
+            && (nearest <= Cfg::LOSING_RANGE || (nearest <= 6 && me.gem_count() >= static_cast<unsigned>(Cfg::THREAT_BANK_BAG)));
         if (lethal || losing) {
             g_stage = "escape";
             fight_enemies(ranged);  // melee strikes then walks; ranged only for a kill

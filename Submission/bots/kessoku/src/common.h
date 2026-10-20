@@ -50,6 +50,13 @@ inline constexpr float LETHAL_MARGIN = 1.15f;  // retreat when visible burst * t
 inline constexpr float DANGER_TILE = 0.60f;    // avoid tiles whose burst exceeds this share of HP
 inline constexpr float OUTMATCHED = 1.25f;     // enemy fight power over ours that counts as losing
 inline constexpr int SKIRMISH_RANGE = 7;       // champions this close take part in a fight
+inline constexpr int LOSING_RANGE = 4;         // outmatched with an enemy this close: disengage (5: 18/42, 6: 15/42 vs v17)
+// Feeding fixes (v18), measured vs v17 on 21 maps: safe recall 22/42 (deaths 326 -> 285);
+// with death-avoid (range 4, 150 rounds) 23/42, deaths 251, vs starter-cpp deaths 90 -> 53.
+inline constexpr bool SAFE_RECALL = true;      // hurt since last turn: walk home rather than recall
+inline constexpr bool DEATH_AVOID = true;      // after dying, skip the groups near where we fell
+inline constexpr int DEATH_AVOID_RANGE = 4;   // 6: 21/42
+inline constexpr int DEATH_AVOID_ROUNDS = 150;  // includes the 60-turn respawn (80/250 at range 6: 23/24 of 42)
 inline constexpr int THREAT_BANK_BAG = 10;     // bank this early when outmatched
 inline constexpr int THREAT_BANK_RANGE = 8;
 // Channel breaking: worth of interrupting each enemy channel (plus bag / 50).
