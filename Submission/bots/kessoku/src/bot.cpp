@@ -316,6 +316,12 @@ std::optional<bc::item_type> Bot::next_item() const {
     const auto owned = bc::self().item_count();
     for (const auto& s : plan)
         if (owned[s.emblem] == 0) return s.shard;
+    if (Cfg::HEALTH_PCT > 0) {
+        const int atk = static_cast<int>(owned[I::power_emblem_of_strength] + owned[I::power_emblem_of_focus]) * 6
+            + static_cast<int>(owned[I::power_shard_of_strength] + owned[I::power_shard_of_focus]);
+        const int hp_sh = static_cast<int>(owned[I::power_emblem_of_health]) * 6 + static_cast<int>(owned[I::power_shard_of_health]);
+        if (hp_sh * 100 < Cfg::HEALTH_PCT * atk + 50) return I::power_shard_of_health;
+    }
     return focus ? I::power_shard_of_focus : I::power_shard_of_strength;
 }
 

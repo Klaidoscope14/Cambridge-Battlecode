@@ -62,7 +62,16 @@ inline constexpr int POKER_RANGE = 4;
 inline constexpr float BURST_RETREAT_MULT = 0.f;
 inline constexpr bool PAIR_MIN_HP = false;           // retreat on the lower of the two halves' health
 inline constexpr float PAIR_TOGETHER_BONUS = 1.0f;   // score bonus for the group the other half claims
-inline constexpr float PAIR_DRAFT_SCORE = 9.6f;      // draft value of the pick
+inline constexpr float PAIR_DRAFT_SCORE = 7.0f;      // draft value of the pick (9.6 -> 7.0: v23 review, 55/70 vs a Stellar/Ren/Varg/Ryth bot, was 43)
+// Review 2026-10-21: after the Monster + Jungle emblem plan every shard went into Strength/Focus
+// (172 Power Strength shards a game on the ladder): Vesper ended at ~690 Strength and 1385 HP. Buy
+// Power Health shards at this percentage of the Power Strength/Focus shards bought (0 = old build).
+// Measured vs the Stellar/Ren/Varg/Ryth bot on 35 maps both sides: 0 -> 43/70, 50 -> 54, 100 -> 54,
+// 200 -> 51, 400 -> 50; vs the live v23 mirror 100 -> 45/70, deaths 903 -> 762.
+// Re-measured v24 on the true 35-map pool (cambc 3.0.4; the 45 files incl. 10 duplicates): with the
+// pair at 7.0, vs v23 45/70 (deaths 548 vs 895), field proxy zmeta 53/70 (= v23, deaths 595 -> 382),
+// zpoke 33 -> 48, zhor 56 -> 61, zlock2 64 -> 66, zcamp/oldpy 70, starter-cpp 69.
+inline constexpr int HEALTH_PCT = 100;
 // Patch 3.0 (cambc 3.0.2, 2026-10-21), measured on the 35-map pool vs the v22 logic:
 // - Heart of Ruin drafted at 10.0 / 9.0: 29/70 each (our bots retreat at 30% HP, so its
 //   missing-health bonus never kicks in) -> not drafted. The old draft loop stopped at 11
