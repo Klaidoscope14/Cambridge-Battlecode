@@ -2,7 +2,7 @@
 """Parallel A/B runner: both sides of every map via `cambc run-batch`, one line per game + a summary.
 
 usage (from Submission/): python3 tools/ab.py TAG BOT OPP [map ...]
-  - no maps: every ladder-pool map in maps/ (the 00*/01* files)
+  - no maps: every ladder-pool map in maps/ (the 00*/01* files, 35 since cambc 3.0)
   - results go to $AB_OUT/TAG (default: $TMPDIR/kessoku_ab/TAG); finished games are reused
     on a rerun with the same TAG, so delete that folder when a bot changes
   - JOBS=8 sets parallel runner processes; games use --release, as on the platform

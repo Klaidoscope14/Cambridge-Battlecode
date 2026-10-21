@@ -1,6 +1,6 @@
 # How to submit (CAMBC 2026)
 
-`Submission/` is a `cambc` workspace (cambc / SDK 2.2.5). The bot is **`bots/kessoku`**, written in C++.
+`Submission/` is a `cambc` workspace (cambc / SDK 3.0.2; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++.
 Ladder team: **HighCortisol** (team id `58271d23-d86a-48de-987a-5d82c983d7db`).
 
 ## Where the submission zip lives
@@ -14,7 +14,7 @@ cambc build kessoku --release                                     # same mode as
 cambc run kessoku starter-cpp --map maps/00lanes.map26a --view    # watch a match
 rm -f ../kessoku.zip && cambc bundle kessoku --output ../kessoku.zip   # bundle never overwrites
 ```
-Maps: `maps/00*.map26a` and `maps/01*.map26a` are the 21-map ladder pool, extracted from our
+Maps: `maps/00*.map26a` and `maps/01*.map26a` are the 35-map ladder pool (`cambc maps list`); `cambc init` downloads them (rename hyphens to underscores). Older copies were extracted from our
 ranked replays (`python3 tools/refresh_maps.py <team id>`; `cambc maps pull` fails). The
 unprefixed maps are older versions kept for reference.
 Each team's stdout is inside the replay bundle (`.repl26a` is a zip: `team-a.stdout`, `team-b.stdout`).
@@ -25,7 +25,7 @@ Matches are deterministic, so compare against a frozen copy of the live version;
 parity wins half the games.
 ```bash
 mkdir -p bots/kbase && unzip -o -q ../kessoku.zip -d bots/kbase && cambc build kbase
-python3 tools/ab.py mytest kessoku kbase            # all 21 pool maps, both sides, 8 in parallel
+python3 tools/ab.py mytest kessoku kbase            # all 35 pool maps, both sides, 8 in parallel
 python3 tools/ab.py mytest_op kessoku oldpy 01hooks # specific maps; oldpy = old Python ganker bot
 rm -rf bots/kbase                                    # remove the frozen copy afterwards
 ```

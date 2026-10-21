@@ -49,6 +49,7 @@ float score(CD pick, const MapShape& m) {
         case CD::ren: v = 6.6f + 0.4f * m.hostile; break;
         case CD::prism: v = 6.2f + 0.8f * m.cluster; break;
         case CD::willow: v = 5.0f; break;
+        case CD::heart_of_ruin: v = Cfg::HOR_DRAFT_SCORE; break;  // patch 3.0: near 100% top-ladder pick rate
         default: v = 0.f;
     }
     return v;
@@ -77,7 +78,7 @@ void play_draft() {
         bc::draft::pick(CD::vesper_vale);
         return;
     }
-    if (Cfg::TEST_FORCE_RANGED)
+    if (Cfg::TEST_FORCE_RANGED || Cfg::RANGED_META)  // patch 3.0 meta: open Vesper, Tavi, Willow
         for (auto p : {CD::vesper_vale, CD::tavi, CD::willow})
             if (std::find(ours.begin(), ours.end(), p) == ours.end()) {
                 bc::draft::pick(p);
@@ -97,7 +98,7 @@ void play_draft() {
     const bool frontliner = has(CD::marcella) || has(CD::varg) || has(CD::ryth);
     CD best = CD::vendetta;
     float best_score = -1.f;
-    for (int i = 0; i < 11; ++i) {
+    for (int i = 0; i <= static_cast<int>(CD::heart_of_ruin); ++i) {  // every draft choice, incl. ones added by patches
         const auto pick = static_cast<CD>(i);
         if (has(pick)) continue;
         float s = score(pick, shape);

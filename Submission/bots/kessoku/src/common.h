@@ -63,6 +63,18 @@ inline constexpr float BURST_RETREAT_MULT = 0.f;
 inline constexpr bool PAIR_MIN_HP = false;           // retreat on the lower of the two halves' health
 inline constexpr float PAIR_TOGETHER_BONUS = 1.0f;   // score bonus for the group the other half claims
 inline constexpr float PAIR_DRAFT_SCORE = 9.6f;      // draft value of the pick
+// Patch 3.0 (cambc 3.0.2, 2026-10-21), measured on the 35-map pool vs the v22 logic:
+// - Heart of Ruin drafted at 10.0 / 9.0: 29/70 each (our bots retreat at 30% HP, so its
+//   missing-health bonus never kicks in) -> not drafted. The old draft loop stopped at 11
+//   choices and could not see it at all.
+// - Ranged meta: Vesper, Tavi, Willow first + ranged move-reset/chase + dash strike 54/70
+//   (deaths 687 vs 1352); Vesper first only 49/70; ranged draft alone 45/70; ranged
+//   behaviour with the old draft 33/70. RANGED_META switches the draft (old scores if false).
+// - Dash strike (aim dashes with landing damage/stun) 37/70; with Heart of Ruin 44/70 vs without.
+inline constexpr bool RANGED_META = true;
+inline constexpr float HOR_DRAFT_SCORE = 0.f;       // Heart of Ruin (added in cambc 3.0)
+inline constexpr bool DASH_STRIKE = true;   // aim dashes that have a landing effect at enemies/camps
+inline constexpr int DASH_STRIKE_CAMPS = 2;   // camps the landing must catch to be worth the cooldown
 inline constexpr int FUEL_RESCORE_MIN = 60000;  // a 100x100 re-score costs ~45K
 inline constexpr int FUEL_DETOUR_MIN = 40000;   // a 100x100 detour field costs ~27K
 inline constexpr bool DETOUR_CACHE = true;
@@ -118,8 +130,8 @@ inline constexpr bool BREAK_RECALL_SPELLS = false;  // spend damage spells on re
 // 9/18; starter-cpp 436 -> 439 rounds; starter-python 429 -> 444 rounds and
 // 2 -> 6 deaths, 9 with the chase). The reset is one extra attack per 8 turns
 // whenever it is spent, so spending it on a move only shifts it.
-inline constexpr bool RANGED_MOVE_RESET = false;  // move, reset, attack in one turn
-inline constexpr bool RANGED_CHASE = false;       // step toward a killable enemy, then fire
+inline constexpr bool RANGED_MOVE_RESET = true;  // move, reset, attack in one turn
+inline constexpr bool RANGED_CHASE = true;       // step toward a killable enemy, then fire
 inline constexpr bool TEST_FORCE_RANGED = false;  // A/B only: draft Vesper, Tavi, Willow first
 // Emblems: Monster = +10% camp damage, Jungle = -30% camp damage taken,
 // Home = recall 5 -> 3 turn ends. HOME_SLOT is Home's place in the build (-1 skips it).

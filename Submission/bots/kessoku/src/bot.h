@@ -15,6 +15,7 @@ struct Group {
     int camp_count = 0;
     int max_respawn = 0;
     bool monolith = false;
+    int reach = 1;         // longest attack range among its fighting camps
     // Dynamic knowledge from our own vision and team broadcasts.
     int respawn_at = 0;    // round the group is back, 0 = assumed up
     bool reward = false;   // monsters dead, capture pending
@@ -150,10 +151,13 @@ class Bot {
     int claims_on(int id) const;
     int required_helpers(const Group& g) const;
     int allies_near(const Group& g) const;
+    // Squads wait just outside the group's reach (golems hit at 4, monoliths at 5).
+    static int wait_ring(const Group& g) { return std::max(Cfg::SQUAD_WAIT_RING, g.reach + 2); }
     float group_score(int id, int dist, int* req_out = nullptr) const;
     int choose_target();
     int vulture_target() const;
 
+    bool dash_strike(const std::vector<vec2>& targets, int min_hits);
     bool fight_enemies(bool kills_only = false);
     bool try_lock_altar();
     bool break_channels();

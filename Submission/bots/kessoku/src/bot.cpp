@@ -21,13 +21,29 @@ std::vector<vec2> altar_tiles;
 
 struct CampSpec {
     float hp, strength;
+    int reach;
 };
 
+// Camp stats come from the engine's design table (no vision needed), cached per type, so
+// balance patches and new camp types (golem, 2026-10-21) are picked up automatically.
 CampSpec spec_of(const bc::camp& c) {
-    if (c.is_monolith()) return {20000.f, 200.f};
-    if (c.is_elk()) return {2400.f, 60.f};
-    if (c.is_wolf()) return {1350.f, 20.f};
-    return {500.f, 0.f};  // gem / gold cluster
+    static std::array<CampSpec, 16> cache{};
+    static std::array<bool, 16> known{};
+    const auto k = static_cast<std::size_t>(c.kind());
+    if (k < cache.size() && known[k]) return cache[k];
+    CampSpec s{500.f, 0.f, 1};
+    try {
+        const auto st = c.base_stats();
+        s = {st.base_health, st.base_strength, static_cast<int>(st.base_attack_range)};
+    } catch (...) {
+        if (c.is_monolith()) s = {20000.f, 200.f, 5};
+        else if (c.is_golem()) s = {5000.f, 120.f, 4};
+        else if (c.is_elk()) s = {2400.f, 60.f, 1};
+        else if (c.is_wolf()) s = {1350.f, 20.f, 1};
+        else s = {120.f, 0.f, 1};  // gem / gold cluster
+    }
+    if (k < cache.size()) cache[k] = s, known[k] = true;
+    return s;
 }
 
 bool has_passive(bc::passive_type p) { return bc::self().passive() == p; }
@@ -68,6 +84,7 @@ void Bot::init() {
             const auto s = spec_of(c);
             g.hp += s.hp;
             g.strength += s.strength;
+            if (s.strength > 0.f) g.reach = std::max(g.reach, s.reach);
             g.monolith = g.monolith || c.is_monolith();
             ++g.camp_count;
         }
@@ -510,7 +527,7 @@ int Bot::allies_near(const Group& g) const {
     for (const auto& a : mates) {
         const auto p = a.pos;
         for (auto t : g.tiles)
-            if (cheb(p, t) <= Cfg::SQUAD_WAIT_RING + 1) { ++n; break; }
+            if (cheb(p, t) <= wait_ring(g) + 1) { ++n; break; }
     }
     return n;
 }
@@ -908,6 +925,39 @@ bool Bot::escape() {
 
 // Focus fire: anything we can kill this turn first, then gem carriers, then the
 // lowest health share. With kills_only, ignore targets that would survive.
+// Dashes with a landing effect (cambc 3.0: damage and/or stun in a radius, e.g. Heart of Ruin)
+// are worth aiming: land where the most targets are caught, on a tile that is not deadly.
+// `targets` are enemy or camp positions; returns true if we dashed.
+bool Bot::dash_strike(const std::vector<vec2>& targets, int min_hits) {
+    auto& me = bc::self();
+    if (!Cfg::DASH_STRIKE || targets.empty() || !me.can_cast()) return false;
+    for (const auto& ab : me.abilities()) {
+        if (!ab.is_dash() || !ab.is_ready() || !ab.info()) continue;
+        const auto* d = std::get_if<bc::ability_dash>(&*ab.info());
+        if (!d || (d->modifier <= 0.f && d->duration <= 0)) continue;
+        const int radius = std::max(1, static_cast<int>(d->radius));
+        const auto blocked = blocked_now();
+        vec2 best = pos;
+        int best_hits = min_hits - 1;
+        for (auto t : (ab.valid_tiles() & ~blocked).positions()) {
+            int hits = 0;
+            for (auto e : targets) hits += cheb(e, t) <= radius;
+            if (hits <= best_hits || burst_at(t) >= 0.6f * my_hp) continue;
+            best_hits = hits, best = t;
+        }
+        if (best == pos) return false;
+        try {
+            if (ab.use(best)) {
+                pos = best;
+                return true;
+            }
+        } catch (...) {
+        }
+        return false;
+    }
+    return false;
+}
+
 bool Bot::fight_enemies(bool kills_only) {
     auto& me = bc::self();
     if (foes.empty()) return false;
@@ -971,6 +1021,21 @@ bool Bot::fight_enemies(bool kills_only) {
                 for (auto t : (goal & square(pos, 1)).positions()) safe = safe || burst_at(t) < 0.5f * my_hp;
                 if (safe && move_to(goal, false)) break;
             }
+    }
+
+    // Open with a landing strike when the skirmish is ours.
+    if (Cfg::DASH_STRIKE && !outmatched && !kills_only) {
+        std::vector<vec2> at;
+        for (const auto* f : order) at.push_back(f->pos);
+        if (dash_strike(at, 1)) {
+            std::erase_if(foes, [&](const Foe& f) {
+                const auto& e = enemies[static_cast<std::size_t>(f.index)];
+                return !e.is_visible() || !e.is_alive();
+            });
+            order.clear();
+            for (const auto& f : foes) order.push_back(&f);
+            std::sort(order.begin(), order.end(), [&](const Foe* a, const Foe* b) { return priority(*a) > priority(*b); });
+        }
     }
 
     bool engaged = false;
@@ -1230,6 +1295,16 @@ void Bot::cast_on_camps(int gid) {
 void Bot::cast_on_camps_unsafe(int gid) {
     auto& me = bc::self();
     if (!me.can_cast()) return;
+    if (Cfg::DASH_STRIKE) {  // stun / hit awake fighting camps of this group with a landing strike
+        std::vector<vec2> at;
+        for (const auto& c : camps)
+            if (!c.is_dead() && c.is_awake() && group_of(c.spawn_position()) == gid && spec_of(c).strength > 0.f)
+                at.push_back(c.position());
+        if (dash_strike(at, Cfg::DASH_STRIKE_CAMPS)) {
+            camps = safe_camps();
+            if (!me.can_cast()) return;
+        }
+    }
     auto relevant = [&](const bc::camp& c) {
         try {  // a camp can drop out of vision after we moved this turn
             if (!c.is_visible() || c.is_dead()) return false;
@@ -1594,7 +1669,7 @@ bool Bot::farm() {
                 }
             }
             bitboard ring, inner;
-            for (auto t : g.tiles) ring |= square(t, Cfg::SQUAD_WAIT_RING), inner |= square(t, 3);
+            for (auto t : g.tiles) ring |= square(t, wait_ring(g)), inner |= square(t, wait_ring(g) - 2);
             ring &= ~inner;
             if (!ring.is_set(pos)) move_to(ring);
             return true;
