@@ -1,0 +1,32 @@
+--- a/Submission/bots/kessoku/src/common.h	2026-10-21 00:56:24
++++ b/Submission/bots/kessoku/src/common.h	2026-10-21 07:59:20
+@@ -62,7 +62,13 @@
+ inline constexpr float BURST_RETREAT_MULT = 0.f;
+ inline constexpr bool PAIR_MIN_HP = false;           // retreat on the lower of the two halves' health
+ inline constexpr float PAIR_TOGETHER_BONUS = 1.0f;   // score bonus for the group the other half claims
+-inline constexpr float PAIR_DRAFT_SCORE = 9.6f;      // draft value of the pick
++inline constexpr float PAIR_DRAFT_SCORE = 7.0f;      // draft value of the pick (9.6 -> 7.0: v23 review, 55/70 vs a Stellar/Ren/Varg/Ryth bot, was 43)
++// Review 2026-10-21: after the Monster + Jungle emblem plan every shard went into Strength/Focus
++// (172 Power Strength shards a game on the ladder): Vesper ended at ~690 Strength and 1385 HP. Buy
++// Power Health shards at this percentage of the Power Strength/Focus shards bought (0 = old build).
++// Measured vs the Stellar/Ren/Varg/Ryth bot on 35 maps both sides: 0 -> 43/70, 50 -> 54, 100 -> 54,
++// 200 -> 51, 400 -> 50; vs the live v23 mirror 100 -> 45/70, deaths 903 -> 762.
++inline constexpr int HEALTH_PCT = 100;
+ // Patch 3.0 (cambc 3.0.2, 2026-10-21), measured on the 35-map pool vs the v22 logic:
+ // - Heart of Ruin drafted at 10.0 / 9.0: 29/70 each (our bots retreat at 30% HP, so its
+ //   missing-health bonus never kicks in) -> not drafted. The old draft loop stopped at 11
+--- a/Submission/bots/kessoku/src/bot.cpp	2026-10-21 00:38:15
++++ b/Submission/bots/kessoku/src/bot.cpp	2026-10-21 07:59:20
+@@ -316,6 +316,12 @@
+     const auto owned = bc::self().item_count();
+     for (const auto& s : plan)
+         if (owned[s.emblem] == 0) return s.shard;
++    if (Cfg::HEALTH_PCT > 0) {
++        const int atk = static_cast<int>(owned[I::power_emblem_of_strength] + owned[I::power_emblem_of_focus]) * 6
++            + static_cast<int>(owned[I::power_shard_of_strength] + owned[I::power_shard_of_focus]);
++        const int hp_sh = static_cast<int>(owned[I::power_emblem_of_health]) * 6 + static_cast<int>(owned[I::power_shard_of_health]);
++        if (hp_sh * 100 < Cfg::HEALTH_PCT * atk + 50) return I::power_shard_of_health;
++    }
+     return focus ? I::power_shard_of_focus : I::power_shard_of_strength;
+ }
+ 
