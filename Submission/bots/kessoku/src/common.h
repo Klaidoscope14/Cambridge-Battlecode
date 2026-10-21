@@ -49,6 +49,20 @@ inline constexpr int RETARGET_EVERY = 4;  // rounds between full target re-score
 // vs the ranged and Heart-of-Ruin bots) -> RETARGET_EVERY stays 4.
 inline constexpr bool GROUP_FIELDS = true;
 inline constexpr int FIELD_BUILD_MIN = 45000;  // spare fuel needed to build one more field
+// Performance audit (PerformanceAudit.md, 2026-10-21): exact optimizations (identical decisions in
+// every game without a fuel suspension), but faster code moves suspensions and re-rolls those games.
+// Measured with bank + observe skip + move scratch vs v25 (35 maps x 2): mirror 38/70; zmeta 59 -> 56,
+// zpoke 52 -> 49, zhor 66 -> 58, zrush 57 -> 59, zlock2 65 -> 66, camper/old bot 70, starters 69/68.
+// Alone vs zmeta (v25 59): bank 55, observe skip 57, nearest-first fields 54 (fuel events 763 -> 925),
+// one build per turn 56, move scratch 55 (events 731). No strength gain, so all OFF (= v25 behaviour).
+// v26 = this source with all OFF: vs v25 on 9 opponents x 70 games, same winner in 629/630, the
+// other a loss turned into a win; 624 games bit-identical (if constexpr keeps the code out).
+inline constexpr bool BANK_CACHE = false;           // bank(): cached altar squares/reachability, index lookups
+inline constexpr bool OBS_SKIP_FAR = false;         // observe: skip groups beyond vision radius
+inline constexpr bool FIELDS_NEAREST_FIRST = false;  // build group fields nearest-to-spawn first
+inline constexpr bool FIELD_BUILD_ONE = false;      // one field per turn unless fuel is plentiful
+inline constexpr int FIELD_BUILD_MORE = 70000;
+inline constexpr bool MOVE_SCRATCH = false;          // move_to reuses one distance-field buffer
 // Algorithm review item 3: beam search over target tours (needs every group field built).
 // Measured: 11/70 vs v24, 39/70 vs the proxy (look-ahead pulls bodies to far groups) -> off.
 inline constexpr bool TOUR_PLAN = false;

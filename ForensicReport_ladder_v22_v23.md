@@ -154,3 +154,81 @@ Rejected: it helps slightly against the proxy but loses heavily to the live buil
 ### C6. What would raise confidence without waiting for 100 new games
 
 Nothing available now settles the cause. Cheap checks left: (1) check the ladder announcements for when the balance patch went live and compare phases around that time; (2) after the next few ladder-v23 series, compare opponents' gems per clear against the 16.7 figure here.
+
+---
+
+## Part D. Current submission: ladder v24 (internal v25), 100 ranked games
+
+### D0. Which build, and what the data cannot say
+
+- The ladder shows 100 ranked games from 04:30 to 07:40 UTC on 21 Oct. Internal v25 = v24 plus cached per-group distance fields (`GROUP_FIELDS`), `CLUSTER_VALUE = 1.0` and a re-test of `CAPTURE_ASSIGN`; tour planner and fight simulation are compiled in but off. `kessoku.zip` was rebuilt at 06:03 UTC (11:33 IST); I cannot tell from the summaries when v25 replaced v24 (fuel-exhausted events on `00lanes`, 145 before and 99-133 after, show no clear step). **The 100 games are pooled as one build.** Local sweeps measured v25 at 37/70 vs v24, and the decisions are intended to be the same, so pooling is an approximation, not an identity.
+- Missing evidence: no per-turn positions, no rating history, no enemy code. Opponent ratings are from a snapshot taken before these games.
+- `botFaults` = 0 and no diagnostic codes in all 100 games; no exceptions or crashes.
+
+### D1. Headline
+
+59-41 (59%). First 45 games 29-16 (64%), last 55 games 30-25 (55%). Previous build: 57% overall, 34% in the 03:00-04:20 dip. 59% vs 57% is not a significant difference; the dip does not persist, but this data cannot say whether that is the build or the opponents. Averages (wins / losses): collected gems 1141 / 620 (opponent 540 / 972); our deaths 7.5 / 16.8 (opponent 13.8 / 7.6); camp damage 156k / 87k (opponent 88k / 125k). The collected-gem lead at round 300 is again decisive: +68 mean in wins, -27 in losses; 80% wins with a lead at r300, 29% without. Our first death comes at a median round 153 in wins vs 111 in losses; deaths before r300: 1.5 vs 2.6.
+
+### D2. Loss categories (41 losses, heuristic labels from per-game totals)
+
+| Category | Losses | Share |
+|---|---|---|
+| Out-farmed (opponent collected >= 150 more) | 27 | 66% |
+| Timeout at round 2000, lost on the tiebreak | 8 | 20% |
+| Close race (collected within 150) | 3 | 7% |
+| Death spiral (>= 25 deaths, >= 1.6x theirs) | 2 | 5% |
+| Carrier losses | 1 | 2% |
+
+Inside "out-farmed", the 150 rounds before the gap became permanent show: bodies lost 9, opponent camp damage > 1.6x ours 11, no visible precursor 11 (labels overlap). **8 of the 41 losses are collapses** (we collected < 45% of their gems, game ended on gems): `00collision` x2, `01elk_arena` x2, `00lanes`, `00corners`, `00packs`, `01hooks`; three of them against the same opponent (Wood V). The 4 contest losses (and 8 timeouts) are gold-tiebreak games where neither side tributed or only the opponent got a monolith.
+
+### D3. Where the gems are lost: the contested middle
+
+Classifying every group capture by distance to each spawn (home / contested within 6 tiles / enemy side), per game:
+
+| | our home groups | contested | enemy-side groups |
+|---|---|---|---|
+| Wins: ours / theirs | 481 / 36 | **528 / 196** | 90 / 274 |
+| Losses: ours / theirs | 341 / 44 | **215 / 440** | 34 / 420 |
+
+The outcome is decided in the contested zone (a swing of about 310 gems for us and 240 for them), not at home. Losses also cost us about 140 home gems (bodies dead or away). This is an aggregate over 100 games and a geometric proxy (Chebyshev distance, not path distance).
+
+### D4. Per-match reconstruction of the recurring cases (the full loss table with all 41 rows is in the scratchpad; the representative ones follow)
+
+1. **`01elk_arena` (ed14cdb4), 0 gems collected, opponent 1008, deaths 6 vs 0.** The map has a single gem group (72 gems, 2 elk + 6 clusters) in the centre next to both altars, so all 1000 gems come from repeatedly clearing it. We died at the centre at r34, 193, 252, 378, 600, 973 and never captured once (campDmg 8-9k per body, none converted). Earliest material decision: the first centre fights (r34-r252) lost three bodies without a capture. Root cause: loss of the only hill (tactical, with a strategic cause: one winner-take-all group). Opponent used a systematic advantage (they hold the hill with 0 deaths), not luck. Another game on this map (10ebc293) 360 vs 1008, 35 vs 8 deaths. Record on this map: 0-2 here, 0-3 in the dip window.
+2. **`00packs` (e4f882e1), 3-body team (Vesper, Tavi, Willow) vs Ren, Stellar, Heart of Ruin; collected 146 vs 1056, deaths 20 vs 1.** Tavi died r62, Vesper r77, Willow r108 near (11-13, 7-10), the first groups; no gems until r300; opponent lost one body all game. Early rush against three ranged bodies that arrived one by one. Root cause: opening engagement (tactical), with a thin 3-body roster as an amplifier. On 3-pick maps overall: 14-10 (58%), so it is not a systematic failure of that roster.
+3. **`00collision` (53cde334, e9e3b661), collected 254 and 360 vs 1092 and 1023.** We took home groups ((28,3), (21,3): 18 and 15 captures vs their 1-2) but lost the middle groups ((24,21), (19,26), (25,18): they took 18, 20, 10 captures to our 2-3). Record 0-3 across the batch.
+4. **`01hooks` (4ab22439), 66 vs 1034 collected, deaths 31 vs 7.** Death spiral on a one-altar map (previous ladder also 0-4 in an earlier build).
+5. **`00contest` x4 (c2e465c1, 2bd9947d, 76718ad2, 21588b89): 62-71 deaths for us in two of them, 0 gems tributed or only gold tiebreaks.** The map's gems are three 200-gem monoliths we never fight (`MONOLITH_FIGHTS = false`); results 2-4 here (both wins on gold with the opponent also at 0 gems). Unchanged finding.
+6. **`00rushbait_v2` (0868094c) and `00lanes` (c10596e3):** reported in Part A.
+
+For each of these the answers to the eight questions are, in short: (1) sequence from the timelines above; (2) the earliest identifiable hit is an early lost fight or a lost first centre capture, usually before round 300; (3) root cause = a lost fight over the central groups, symptoms = fewer clears, deaths, lower collection; (4) tactical (fight selection and timing), with a strategic component on hill maps; not computational (fuel events are in the same range as before, only lanes/elk_arena 58 reach 50+), not a code defect (0 faults), informational only in the sense that vision 8 hides the enemy squad until contact; (5) alternatives such as holding bodies back until the squad forms were available but I cannot show they would have worked from this data; (6) elk_arena and collision are systematic (repeat losses), the other collapses involve different opponents, and 3 of 8 come from one strong team (Wood V), so partly opponent strength; (7) and (8) below.
+
+### D5. Smallest changes, regression scenarios, and what I would not do
+
+| Candidate | Evidence level | Regression scenario | Measure | Risks |
+|---|---|---|---|---|
+| Treat contested-zone groups as one helper harder before round ~300 (more caution when bodies would arrive one at a time) | Hypothesis from D3 and the pre-r300 death counts (2.6 vs 1.5) | `ab.py` on the 35 maps vs the frozen live bot, the Stellar/Ren/Varg/Ryth proxy, and the ranged bot; log deaths before r300 and collected lead at r300 | win rate, deaths before r300, lead at r300 | slower openings vs passive bots (the earlier squad-wait variants cost 15-30 rounds on starters); more waiting rings |
+| Hill-map special case (elk_arena, contest) | Weak: two maps | Both maps, both sides, vs an opponent that actually holds the hill (proxy needs a "central holder" variant) | gems tributed, deaths | overfitting two maps; earlier monolith variants failed locally |
+| Idle-bag bank rule | Not supported here: 20 games show the pattern, 14-6 win rate | - | - | do not ship |
+| Opponent-specific logic | Not possible (opponents change code) | - | - | - |
+
+I do not recommend a global strategy change from this batch. The robust patterns (early lead decides, the middle decides) were already visible before and are not specific to the new build.
+
+### D6. Correction: build boundary confirmed by you (Ad Astra series = first games of internal v25)
+
+Split at 06:50 UTC. The pooling caveat in D0 is replaced by this table.
+
+| | ladder v23 = internal v24 (04:30-06:40) | ladder v24 = internal v25 (06:50-07:40) |
+|---|---|---|
+| Games, record | 70, 42-28 (60%) | 30, 17-13 (57%) |
+| Loss mix | out-farmed 18, timeout 6, close 2, carrier 1, spiral 1 | out-farmed 9, timeout 2, close 1, spiral 1 |
+| Collected per game (us / them) | 952 / 721 | 868 / 709 |
+| Deaths per game (us / them) | 10.4 / 11.7 | 13.4 / 10.3 |
+| Collected lead at r300 | +29 | +29 |
+| Fuel-exhausted events per game | 9.5 | 12.6 |
+| Opponent rating (snapshot) | 1672 | 1696 |
+
+- The 60% vs 57% difference is not distinguishable from chance (two-proportion z = 0.31). v25 matches the local result (37/70 vs v24: no real change in decisions).
+- The cached group fields did not visibly lower fuel exhaustion on the big maps: `00lanes` 100 and 133 events in v25 (145, 122, 99 in v24), `01big_world` 62. Three lanes games and different opponents, so small-sample, but there is no sign of the intended saving yet. Hypothesis (unverified): the fields are built one per turn from spare fuel, which consumes the budget on exactly the maps that were already short.
+- Deaths per game are higher in v25 (13.4 vs 10.4) against slightly stronger opponents (+24 rating); n = 30, so I draw no conclusion.
+- v25 series so far: Ad Astra 3-2, Preyas 3-2, Electric Tributers 3-2, cache_v2 2-3, BitShift 4-1, Mate in One 2-3.

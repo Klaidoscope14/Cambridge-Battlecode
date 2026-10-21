@@ -265,8 +265,26 @@ void Bot::observe() {
 
     visible_now = bc::vision::visible_tiles();
     const auto& visible = visible_now;
+    // A group whose every tile is beyond our vision radius cannot be seen (we place no
+    // wards), so skip the per-tile test. Geometry is static: filled on first use.
+    if constexpr (Cfg::OBS_SKIP_FAR) {
+        if (!geo_ready) {
+            geo_ready = true;
+            vision_r = static_cast<int>(me.base_stats().vision_radius);
+            for (const auto& g : groups) {
+                int x0 = 1 << 20, y0 = 1 << 20, x1 = -1, y1 = -1;
+                for (auto t : g.tiles) x0 = std::min(x0, t.x), y0 = std::min(y0, t.y), x1 = std::max(x1, t.x), y1 = std::max(y1, t.y);
+                const vec2 c{(x0 + x1) / 2, (y0 + y1) / 2};
+                int r = 0;
+                for (auto t : g.tiles) r = std::max(r, cheb(t, c));
+                geo_centre.push_back(c), geo_radius.push_back(r);
+            }
+        }
+    }
     for (std::size_t i = 0; i < groups.size(); ++i) {
         auto& g = groups[i];
+        if constexpr (Cfg::OBS_SKIP_FAR)
+            if (cheb(pos, geo_centre[i]) > vision_r + geo_radius[i] + 1) continue;
         bool seen = false;
         for (auto t : g.tiles)
             if (visible.is_set(t)) { seen = true; break; }
@@ -357,7 +375,13 @@ bool Bot::move_to(bitboard goals, bool allow_dash) {
     goals &= ~blocked;
     if (goals.is_empty() || goals.is_set(pos)) return false;
 
-    bc::distance_field field;
+    std::optional<bc::distance_field> fresh;
+    if constexpr (Cfg::MOVE_SCRATCH) {
+        if (!move_field) move_field = std::make_unique<bc::distance_field>();  // one 20 KB buffer, reused
+    } else {
+        fresh.emplace();
+    }
+    bc::distance_field& field = Cfg::MOVE_SCRATCH ? *move_field : *fresh;
     bitboard origin;
     origin.set(pos, true);
     auto here_d = UNREACH;
@@ -619,9 +643,25 @@ void Bot::ensure_here() {
 // end of a turn, one at a time.
 void Bot::build_group_fields() {
     if (!Cfg::GROUP_FIELDS || !ready) return;
-    if (gfield.size() != groups.size()) gfield.resize(groups.size()), gfield_ok.assign(groups.size(), 0);
+    if (gfield.size() != groups.size()) {
+        gfield.resize(groups.size()), gfield_ok.assign(groups.size(), 0);
+        if constexpr (Cfg::FIELDS_NEAREST_FIRST) {  // the groups we will score first get their field first
+            field_order.clear();
+            for (std::size_t i = 0; i < groups.size(); ++i) field_order.push_back(static_cast<int>(i));
+            std::vector<int> d(groups.size(), UNREACH);
+            for (std::size_t i = 0; i < groups.size(); ++i)
+                for (auto t : groups[i].tiles) d[i] = std::min<int>(d[i], spawn_field.get(t));
+            std::stable_sort(field_order.begin(), field_order.end(), [&](int a, int b) { return d[static_cast<std::size_t>(a)] < d[static_cast<std::size_t>(b)]; });
+        }
+    }
+    [[maybe_unused]] int built = 0;
     while (gfield_next < static_cast<int>(groups.size()) && bc::fuel_remaining() >= static_cast<std::uint64_t>(Cfg::FIELD_BUILD_MIN)) {
-        const auto i = static_cast<std::size_t>(gfield_next++);
+        if constexpr (Cfg::FIELD_BUILD_ONE) {  // one BFS per turn unless there is plenty left (~33K each at 100x100)
+            if (built > 0 && bc::fuel_remaining() < static_cast<std::uint64_t>(Cfg::FIELD_BUILD_MORE)) break;
+            ++built;
+        }
+        std::size_t i = static_cast<std::size_t>(gfield_next++);
+        if constexpr (Cfg::FIELDS_NEAREST_FIRST) i = static_cast<std::size_t>(field_order[i]);
         bitboard visited;
         gfield[i].compute(terrain, groups[i].spawn & ~terrain, visited);
         gfield_ok[i] = 1;
@@ -1718,6 +1758,7 @@ bool Bot::should_bank() const {
 }
 
 bool Bot::bank() {
+    if constexpr (Cfg::BANK_CACHE) return bank_cached();  // performance audit: cached altar geometry
     auto& me = bc::self();
     // Altars with enemies near them (seen now or remembered) are where carriers die.
     auto threatened = [&](vec2 a) {
@@ -1776,6 +1817,84 @@ bool Bot::bank() {
             continue;
         }
         goals |= square(a, bc::constants::submit_gems_range);
+    }
+    if (move_to(goals)) return true;
+    // Every tribute tile walled off or occupied (boss_battle: the boss camp sits on
+    // the only way in): banking is impossible for now, so farm instead.
+    if (Cfg::BLOCKED_ALTAR_FARM && me.can_move()) {
+        bank_blocked_until = round + Cfg::BLOCKED_ALTAR_ROUNDS;
+        return false;
+    }
+    return true;
+}
+
+// Same decisions as bank(), with the static altar squares and reachability cached and
+// altars looked up by index (PerformanceAudit.md 3.1): O(A) instead of O(A^2) per call.
+bool Bot::bank_cached() {
+    auto& me = bc::self();
+    if (altar_sq.size() != altar_tiles.size()) {  // static per game: filled on first use, not in init
+        altar_sq.clear(); altar_reach.clear();
+    for (auto a : altar_tiles) {
+        altar_sq.push_back(square(a, bc::constants::submit_gems_range));
+        bool r = false;
+        for (auto t : (square(a, bc::constants::submit_gems_range) & ~terrain).positions())
+            if (spawn_field.get(t) < UNREACH) { r = true; break; }
+        altar_reach.push_back(r ? 1 : 0);
+    }
+    }
+    // Altars with enemies near them (seen now or remembered) are where carriers die.
+    auto threatened = [&](std::size_t i) {
+        if (!Cfg::SAFE_ALTARS) return false;
+        const vec2 a = altar_tiles[i];
+        if (i < altar_hot.size() && round - altar_hot[i] <= Cfg::ALTAR_HOT_ROUNDS) return true;  // campers do not leave in 8 rounds
+        for (const auto& f : foes)
+            if (cheb(f.pos, a) <= Cfg::ALTAR_THREAT_RANGE) return true;
+        for (const auto& g : ghosts)
+            if (g.seen != round && cheb(g.pos, a) <= Cfg::ALTAR_THREAT_RANGE + g.slack) return true;
+        return false;
+    };
+    // Only altars we can actually walk to count as a safe alternative.
+    bool any_safe = false;
+    for (std::size_t i = 0; i < altar_tiles.size() && !any_safe; ++i) any_safe = !threatened(i) && (!Cfg::REACHABLE_ANY_SAFE || altar_reach[i]);
+    bitboard goals;
+    for (std::size_t ai = 0; ai < altar_tiles.size(); ++ai) {
+        const vec2 a = altar_tiles[ai];
+        if (bc::vision::has_altar_lock(a) && bc::vision::altar_lock_at(a).is_enemy()) {
+            if (!Cfg::CLEAR_ENEMY_LOCKS) continue;
+            // A lock never expires: three basic attacks are the only way to bank here again.
+            const int reach = static_cast<int>(me.attack_range());
+            if (cheb(a, pos) <= reach) {
+                if (me.can_attack()) {
+                    try {
+                        me.attack(bc::vision::altar_lock_at(a));
+                        acted_attack = true;
+                    } catch (...) {
+                    }
+                }
+                return true;
+            }
+            goals |= square(a, reach) & ~terrain;
+            continue;
+        }
+        if (any_safe && threatened(ai) && cheb(a, pos) > bc::constants::submit_gems_range) continue;
+        if (cheb(a, pos) <= bc::constants::submit_gems_range) {
+            // A tribute channel holds us still for ceil(bag/10) turns and damage does not stop
+            // it, death does: do not start one we would not live through.
+            if (Cfg::FIGHT_SIM_TRIBUTE && !foes.empty()) {
+                const int turns = std::max(1, (static_cast<int>(me.gem_count()) + 9) / 10);
+                if (simulate_fight(pos, turns, true).me_dies_at >= 0) {
+                    if (escape() || step_away(enemy_pos)) return true;
+                    continue;
+                }
+            }
+            try {
+                me.submit_gems(a);
+                return true;
+            } catch (...) {
+            }
+            continue;
+        }
+        goals |= altar_sq[ai];
     }
     if (move_to(goals)) return true;
     // Every tribute tile walled off or occupied (boss_battle: the boss camp sits on

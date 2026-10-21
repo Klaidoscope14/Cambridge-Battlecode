@@ -1,0 +1,120 @@
+--- a/Submission/bots/kessoku/src/bot.cpp	2026-10-21 14:39:29
++++ b/Submission/bots/kessoku/src/bot.cpp	2026-10-22 01:12:03
+@@ -326,6 +326,7 @@
+     else plan.push_back({I::monster_shard_of_strength, I::monster_emblem_of_strength});
+     if (!(kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 2))
+         plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
++    if (Cfg::DURABILITY_SLOT) plan.push_back({I::durability_shard_of_health, I::durability_emblem_of_health});
+     // Tavi shops anywhere, so he rarely recalls: Home is wasted on him.
+     if (Cfg::HOME_SLOT >= 0 && kind != bc::champion_type::tavi) {
+         const auto at = std::min<std::size_t>(plan.size(), static_cast<std::size_t>(Cfg::HOME_SLOT) + (plan.size() > 2 ? 1 : 0));
+@@ -577,6 +578,11 @@
+     const float hp = g.reward ? 0.f : group_hp(id);
+     const float kill = hp / (my_dps(g) * (1 + crew));
+     float value = g.gems + Cfg::GOLD_WEIGHT * g.gold;
++    if (arrive_ready && (round < Cfg::ARRIVAL_ROUNDS || (Cfg::LEAD_SAFE && standing > 0))) {
++        const int d = arrive_delta[static_cast<std::size_t>(id)];
++        if (std::abs(d) <= Cfg::ARRIVAL_TIE) value *= Cfg::ARRIVAL_PEN;
++        else if (d > Cfg::ARRIVAL_TIE && d < 999) value *= Cfg::ARRIVAL_THEM_PEN;
++    }
+     if (g.strength <= 0.f) value *= Cfg::CLUSTER_VALUE;  // 120-HP clusters (patch 3.0) kill fast but pay little
+     if (g.strength <= 0.f && claims > 0) value *= Cfg::CLAIMED_PENALTY;
+     else if (crew > 0) value /= static_cast<float>(1 + crew);
+@@ -665,10 +671,27 @@
+         bitboard visited;
+         gfield[i].compute(terrain, groups[i].spawn & ~terrain, visited);
+         gfield_ok[i] = 1;
++    }
++}
++
++void Bot::ensure_arrival() {
++    if (arrive_ready || (Cfg::ARRIVAL_PEN >= 1.f && Cfg::ARRIVAL_THEM_PEN >= 1.f)) return;
++    arrive_ready = true;
++    bitboard visited;
++    enemy_field.compute(terrain & ~enemy_spawn, enemy_spawn, visited);
++    arrive_delta.assign(groups.size(), 999);
++    for (std::size_t i = 0; i < groups.size(); ++i) {
++        int du = UNREACH, dt = UNREACH;
++        for (auto t : groups[i].tiles) {
++            du = std::min<int>(du, spawn_field.get(t));
++            dt = std::min<int>(dt, enemy_field.get(t));
++        }
++        if (du < UNREACH && dt < UNREACH) arrive_delta[i] = du - dt;
+     }
+ }
+ 
+ int Bot::choose_target() {
++    ensure_arrival();
+     // Keep the current target between re-scores unless it has gone stale.
+     if (target >= 0 && round < next_eval) {
+         const auto& g = groups[static_cast<std::size_t>(target)];
+@@ -1737,6 +1760,7 @@
+         threshold = std::min(threshold, Cfg::AHEAD_BANK_BAG);
+     if (standing < 0) threshold = std::max(threshold, Cfg::BEHIND_BANK_BAG);
+     if (Cfg::PVP_BANKING && round - last_foe_round <= Cfg::PVP_RECENT_ROUNDS) threshold = std::min(threshold, Cfg::PVP_BANK_BAG);
++    if (Cfg::CLOSEOUT_AT > 0 && bc::global_submitted_gems(team::ally) >= static_cast<unsigned>(Cfg::CLOSEOUT_AT) && bag >= Cfg::CLOSEOUT_MIN_BAG) return true;
+     if (bag >= threshold) return true;
+     if (!(Cfg::DETOUR_BANKING && Cfg::DETOUR_REPLACES_NEAR) && altar_field.get(pos) <= Cfg::BANK_NEAR_DIST) return true;
+     if (Cfg::DETOUR_BANKING && bag >= Cfg::DETOUR_MIN_BAG && round - detour_round <= Cfg::RETARGET_EVERY
+@@ -1809,6 +1833,15 @@
+                     continue;
+                 }
+             }
++            if (Cfg::LOCK_ON_BANK) {
++                auto& lk = me.consumables()[bc::consumable_type::altar_lock];
++                if (lk.count() > 0 && !bc::vision::has_altar_lock(a)) {
++                    try { lk.use(a); } catch (...) {}
++                }
++            }
++            if (Cfg::WARD_ON_BANK) {
++                try { me.place_ward(pos); } catch (...) {}
++            }
+             try {
+                 me.submit_gems(a);
+                 return true;
+@@ -2095,6 +2128,9 @@
+             grp.respawn_at = round + grp.max_respawn;
+             grp.reward = false;
+             broadcast_capture(g);
++            if (Cfg::WARD_ON_CAPTURE) {
++                try { me.place_ward(pos); } catch (...) {}
++            }
+             if (target == g) target = -1;
+         }
+         capture_group = -1;
+--- a/Submission/bots/kessoku/src/bot.h	2026-10-21 14:39:29
++++ b/Submission/bots/kessoku/src/bot.h	2026-10-22 01:06:02
+@@ -69,7 +69,11 @@
+     std::vector<std::int16_t> group_at;  // linear tile index -> group id, -1 none
+     bitboard terrain;                    // static blocking terrain
+     bc::distance_field altar_field;      // distance to the nearest tribute tile
+-    bc::distance_field spawn_field;      // distance to our spawn
++    bc::distance_field spawn_field;
++    bc::distance_field enemy_field;          // distance from the enemy spawn (experiment)
++    std::vector<int> arrive_delta;           // per group: our spawn distance - their spawn distance
++    bool arrive_ready = false;
++    void ensure_arrival();      // distance to our spawn
+     bc::distance_field here;             // terrain distance from me (lazily, see ensure_here)
+     bool here_ready = false;
+     std::vector<bc::distance_field> gfield;  // per group: distance from its spawn tiles (static)
+--- a/Submission/bots/kessoku/src/common.h	2026-10-21 23:11:04
++++ b/Submission/bots/kessoku/src/common.h	2026-10-22 01:11:22
+@@ -27,6 +27,18 @@
+ }
+ 
+ namespace Cfg {
++// --- strategy experiments (all off = v25/v26 behaviour) ---
++inline constexpr float ARRIVAL_PEN = 1.0f;       // opening: value multiplier for groups both teams reach about together
++inline constexpr float ARRIVAL_THEM_PEN = 1.0f;  // opening: multiplier for groups the enemy reaches clearly first
++inline constexpr int ARRIVAL_TIE = 3;            // |our spawn distance - their spawn distance| <= this = contested
++inline constexpr int ARRIVAL_ROUNDS = 300;       // rules apply this long
++inline constexpr bool LEAD_SAFE = false;         // while far ahead (standing > 0) keep applying the arrival rules: avoid contested groups
++inline constexpr bool DURABILITY_SLOT = false;   // buy a Durability emblem (-10% damage taken) after Monster + Jungle
++inline constexpr bool LOCK_ON_BANK = false;      // place our altar lock before tributing there (blocks enemy tribute and enemy locks)
++inline constexpr bool WARD_ON_CAPTURE = false;   // leave the ward on the group we just captured (respawn timer + enemy sightings stay visible)
++inline constexpr bool WARD_ON_BANK = false;      // leave the ward next to the altar we tribute at
++inline constexpr int CLOSEOUT_AT = 0;            // team tributed gems at which every body banks any bag >= CLOSEOUT_MIN_BAG
++inline constexpr int CLOSEOUT_MIN_BAG = 5;
+ // Banking: go tribute once the bag is this big, or opportunistically when close.
+ inline constexpr int BANK_BAG = 48;
+ inline constexpr int BANK_NEAR_DIST = 4;

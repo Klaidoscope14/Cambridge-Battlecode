@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <optional>
 #include <vector>
 #include "common.h"
@@ -74,6 +75,12 @@ class Bot {
     std::vector<bc::distance_field> gfield;  // per group: distance from its spawn tiles (static)
     std::vector<char> gfield_ok;
     int gfield_next = 0;
+    std::vector<int> field_order;  // build order of the group fields
+    bool geo_ready = false;
+    std::vector<vec2> geo_centre;  // per group: bounding-box centre of its spawn tiles (OBS_SKIP_FAR)
+    std::vector<int> geo_radius;   // per group: Chebyshev radius around that centre
+    int vision_r = 8;
+    std::unique_ptr<bc::distance_field> move_field;  // scratch buffer for move_to (MOVE_SCRATCH)
 
     int target = -1;
     int need = 0;          // allies the current target needs alongside us
@@ -106,6 +113,8 @@ class Bot {
     std::vector<float> live_hp;     // visible living camp health per group, -1 if unseen
     std::vector<vec2> enemy_pos;
     std::vector<Foe> foes;
+    std::vector<bitboard> altar_sq;   // static: tribute squares per altar
+    std::vector<char> altar_reach;    // static: a tribute tile is walkable from our spawn
     std::vector<int> altar_hot;  // per altar: last round an enemy was seen near it
     std::vector<Foe> ghosts;  // remembered enemies out of vision (index unused)
     bool use_ghosts = false;  // this turn: we carry a bag worth protecting
@@ -179,6 +188,7 @@ private:
     int stun_slot() const;
     bool should_bank() const;
     bool bank();
+    bool bank_cached();
     bool farm();
     bool retreat_if_hurt();
     void cast_on_camps(int group);
