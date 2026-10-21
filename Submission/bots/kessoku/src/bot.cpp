@@ -538,7 +538,7 @@ int Bot::allies_near(const Group& g) const {
     return n;
 }
 
-float Bot::group_score(int id, int dist, int* req_out) const {
+float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* time_out) const {
     const auto& g = groups[static_cast<std::size_t>(id)];
     if (round < g.skip_until || (g.monolith && !Cfg::MONOLITH_FIGHTS && !(Cfg::MONOLITH_WHEN_DOMINANT && mono_dominant))) return -1.f;
     // Monolith fights get long and a camp kill destroys the bag: go in empty-handed.
@@ -553,6 +553,7 @@ float Bot::group_score(int id, int dist, int* req_out) const {
     const float hp = g.reward ? 0.f : group_hp(id);
     const float kill = hp / (my_dps(g) * (1 + crew));
     float value = g.gems + Cfg::GOLD_WEIGHT * g.gold;
+    if (g.strength <= 0.f) value *= Cfg::CLUSTER_VALUE;  // 120-HP clusters (patch 3.0) kill fast but pay little
     if (g.strength <= 0.f && claims > 0) value *= Cfg::CLAIMED_PENALTY;
     else if (crew > 0) value /= static_cast<float>(1 + crew);
     if (req > 0) value *= 1.f + Cfg::SQUAD_CLAIM_BONUS * std::min(claims, req);  // converge on one squad target
@@ -566,6 +567,8 @@ float Bot::group_score(int id, int dist, int* req_out) const {
             break;
         }
     const float time = dist + kill + bc::constants::capture_time + std::max(0, g.respawn_at - round - dist);
+    if (value_out) *value_out = value;
+    if (time_out) *time_out = time;
     return value / (time + 4.f);
 }
 
@@ -599,6 +602,32 @@ int Bot::vulture_target() const {
     return best;
 }
 
+void Bot::ensure_here() {
+    if (here_ready) return;
+    here_ready = true;
+    bitboard visited, origin;
+    origin.set(pos, true);
+    here.compute(terrain, origin, visited);
+    if (Cfg::DASH_ISLANDS && dasher && islands) {
+        bitboard visited2;
+        here_dash.compute(terrain & ~bc::map::holes(), origin, visited2);
+    }
+}
+
+// One BFS rooted at each camp group, cached for the game (terrain is static): the
+// distance from any tile to the group is then a lookup. Built from spare fuel at the
+// end of a turn, one at a time.
+void Bot::build_group_fields() {
+    if (!Cfg::GROUP_FIELDS || !ready) return;
+    if (gfield.size() != groups.size()) gfield.resize(groups.size()), gfield_ok.assign(groups.size(), 0);
+    while (gfield_next < static_cast<int>(groups.size()) && bc::fuel_remaining() >= static_cast<std::uint64_t>(Cfg::FIELD_BUILD_MIN)) {
+        const auto i = static_cast<std::size_t>(gfield_next++);
+        bitboard visited;
+        gfield[i].compute(terrain, groups[i].spawn & ~terrain, visited);
+        gfield_ok[i] = 1;
+    }
+}
+
 int Bot::choose_target() {
     // Keep the current target between re-scores unless it has gone stale.
     if (target >= 0 && round < next_eval) {
@@ -612,17 +641,14 @@ int Bot::choose_target() {
         if (g.respawn_at <= round + 2 && round >= g.skip_until) return target;
     }
     next_eval = round + (W * H >= Cfg::BIG_MAP_AREA ? Cfg::RETARGET_EVERY_BIG : Cfg::RETARGET_EVERY);
-    {
-        bitboard visited, origin;
-        origin.set(pos, true);
-        here.compute(terrain, origin, visited);
-        if (Cfg::DASH_ISLANDS && dasher && islands) {
-            bitboard visited2;
-            here_dash.compute(terrain & ~bc::map::holes(), origin, visited2);
-        }
-    }
+    // The full-map field from us is only needed when a group has no cached field yet,
+    // for the detour test, the regroup check and island dashing (algorithm review item 2).
+    here_ready = false;
     const bool use_dash = Cfg::DASH_ISLANDS && dasher && islands;
     auto dist_to = [&](const Group& g) {
+        const auto gi = static_cast<std::size_t>(&g - groups.data());
+        if (Cfg::GROUP_FIELDS && !use_dash && gi < gfield_ok.size() && gfield_ok[gi]) return static_cast<int>(gfield[gi].get(pos));
+        ensure_here();
         int d = UNREACH;
         for (auto t : g.tiles) d = std::min<int>(d, here.get(t));
         if (d >= UNREACH && use_dash)
@@ -632,13 +658,64 @@ int Bot::choose_target() {
     };
     int best = -1, best_req = 0, current_req = 0;
     float best_s = 0.f, current = -1.f;
+    struct Cand { int id, req; float s, v, t; };
+    std::vector<Cand> cands;
     for (std::size_t i = 0; i < groups.size(); ++i) {
         const int dist = dist_to(groups[i]);
         if (dist >= UNREACH) continue;
         int req = 0;
-        const float s = group_score(static_cast<int>(i), dist, &req);
+        float v = 0.f, t = 0.f;
+        const float s = group_score(static_cast<int>(i), dist, &req, &v, &t);
         if (static_cast<int>(i) == target) current = s, current_req = req;
         if (s > best_s) best_s = s, best = static_cast<int>(i), best_req = req;
+        if (s > 0.f) cands.push_back({static_cast<int>(i), req, s, v, t});
+    }
+    // Tour planner (algorithm review item 3): look three legs ahead over the best groups,
+    // with exact group-to-group distances and respawn windows, and take the first leg of
+    // the tour with the best value per round. The switch margin below keeps us committed.
+    bool all_fields = Cfg::GROUP_FIELDS && gfield_ok.size() == groups.size() && groups.size() <= 64;
+    for (std::size_t i = 0; all_fields && i < gfield_ok.size(); ++i) all_fields = gfield_ok[i];
+    if (Cfg::TOUR_PLAN && all_fields && cands.size() > 1) {
+        std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) { return a.s > b.s; });
+        if (cands.size() > static_cast<std::size_t>(Cfg::TOUR_CANDIDATES)) cands.resize(static_cast<std::size_t>(Cfg::TOUR_CANDIDATES));
+        struct Node { int first, last; float t, v; std::uint64_t used; };
+        std::vector<Node> beam, next;
+        std::vector<float> rate_of(groups.size(), -1.f);
+        auto rate = [](const Node& n) { return n.v / (n.t + 4.f); };
+        auto note = [&](const Node& n) { auto& r = rate_of[static_cast<std::size_t>(n.first)]; r = std::max(r, rate(n)); };
+        for (const auto& c : cands) {
+            beam.push_back({c.id, c.id, c.t, c.v, std::uint64_t{1} << c.id});
+            note(beam.back());
+        }
+        for (int depth = 1; depth < Cfg::TOUR_DEPTH; ++depth) {
+            next.clear();
+            for (const auto& n : beam) {
+                const vec2 from = groups[static_cast<std::size_t>(n.last)].tiles.front();
+                for (const auto& c : cands) {
+                    if (n.used >> c.id & 1) continue;
+                    const int d = static_cast<int>(gfield[static_cast<std::size_t>(c.id)].get(from));
+                    if (d >= UNREACH) continue;
+                    float v = 0.f, t = 0.f;
+                    if (group_score(c.id, static_cast<int>(n.t) + d, nullptr, &v, &t) <= 0.f) continue;
+                    next.push_back({n.first, c.id, t, n.v + v, n.used | std::uint64_t{1} << c.id});
+                    note(next.back());
+                }
+            }
+            std::sort(next.begin(), next.end(), [&](const Node& a, const Node& b) { return rate(a) > rate(b); });
+            if (next.size() > static_cast<std::size_t>(Cfg::TOUR_BEAM)) next.resize(static_cast<std::size_t>(Cfg::TOUR_BEAM));
+            beam.swap(next);
+            if (beam.empty()) break;
+        }
+        int tour_best = -1;
+        for (std::size_t i = 0; i < rate_of.size(); ++i)
+            if (rate_of[i] > 0.f && (tour_best < 0 || rate_of[i] > rate_of[static_cast<std::size_t>(tour_best)])) tour_best = static_cast<int>(i);
+        if (tour_best >= 0) {
+            best = tour_best;
+            best_s = rate_of[static_cast<std::size_t>(tour_best)];
+            for (const auto& c : cands) if (c.id == best) best_req = c.req;
+            if (target >= 0 && target < static_cast<int>(rate_of.size()) && rate_of[static_cast<std::size_t>(target)] > 0.f)
+                current = rate_of[static_cast<std::size_t>(target)];
+        }
     }
 #ifdef KSK_TRACE
     if (round == 100 || round == 300) {
@@ -663,7 +740,9 @@ int Bot::choose_target() {
         for (std::size_t i = 0; i < groups.size(); ++i) {
             const int id = static_cast<int>(i);
             const int c = claims_on(id);
-            if (id == best || c <= join_claims || here.get(groups[i].tiles.front()) >= UNREACH) continue;
+            if (id == best || c <= join_claims) continue;
+            ensure_here();
+            if (here.get(groups[i].tiles.front()) >= UNREACH) continue;
             const int req = required_helpers(groups[i]);
             if (req < 0 || groups[i].respawn_at > round) continue;
             join = id, join_claims = c, join_req = req;
@@ -685,6 +764,7 @@ int Bot::choose_target() {
     if (Cfg::DETOUR_BANKING && target >= 0 && bc::self().gem_count() >= static_cast<unsigned>(Cfg::DETOUR_MIN_BAG)
         && (!Cfg::FUEL_GUARD || detour_group == target || bc::fuel_remaining() >= static_cast<std::uint64_t>(Cfg::FUEL_DETOUR_MIN))) {
         const auto& g = groups[static_cast<std::size_t>(target)];
+        ensure_here();
         int direct = UNREACH;
         for (auto t : g.tiles) direct = std::min<int>(direct, here.get(t));
         if (direct < UNREACH) {
@@ -784,6 +864,12 @@ void Bot::assess_threat() {
     int nearest = 99;
     for (const auto& f : foes) nearest = std::min(nearest, cheb(f.pos, pos));
     outmatched = nearest <= Cfg::SKIRMISH_RANGE && side_power(pos, true) > Cfg::OUTMATCHED * side_power(pos, false);
+    if (Cfg::FIGHT_SIM_OUTMATCHED && nearest <= Cfg::SKIRMISH_RANGE) {
+        const auto f = simulate_fight(pos, Cfg::FIGHT_SIM_ROUNDS, false);
+        const float ours = f.ours0 > 0.f ? f.ours_left / f.ours0 : 0.f;
+        const float theirs = f.theirs0 > 0.f ? f.theirs_left / f.theirs0 : 0.f;
+        outmatched = f.me_dies_at >= 0 || theirs > ours + Cfg::FIGHT_SIM_MARGIN;
+    }
     danger_ready = false;
 }
 
@@ -851,6 +937,76 @@ float Bot::side_power(vec2 at, bool enemy) const {
             if (cheb(a.pos, at) <= Cfg::SKIRMISH_RANGE) hp += a.hp, dps += a.power;
     }
     return hp * dps;
+}
+
+// Bounded focus-fire simulation (algorithm review item 6): the visible skirmish around
+// `at` for `rounds` rounds. Each unit hits the lowest-health enemy it can reach, closing one
+// tile a round (melee walks and hits in a round, ranged must stand); ready spells land in
+// round 0; a ready stun skips the strongest reachable enemy's next round. `me_passive`: we
+// stand still and do not attack (a tribute channel). Ghosts count, faded by age.
+Bot::FightOutcome Bot::simulate_fight(vec2 at, int rounds, bool me_passive) const {
+    struct U { vec2 p; float hp, dps, spell; int reach; bool stun, ally, me, passive; int stunned = -1; };
+    std::vector<U> u;
+    auto& me = bc::self();
+    float my_spell = 0.f;
+    bool my_stun = false;
+    if (me.can_cast())
+        for (const auto& ab : me.abilities()) {
+            if (!ab.is_ready()) continue;
+            if (ab.is_damage() || ab.is_aoe_damage()) my_spell = std::max(my_spell, ab.damage_amount());
+            if (ab.is_cc()) my_stun = true;
+        }
+    u.push_back({pos, my_hp, me.strength(), my_spell, static_cast<int>(me.attack_range()), my_stun, true, true, me_passive});
+    auto ranged_type = [](int t) {
+        using C = bc::champion_type;
+        const auto c = static_cast<C>(t);
+        return c == C::vesper_vale || c == C::cassi || c == C::stellar || c == C::prism || c == C::willow || c == C::tavi;
+    };
+    for (const auto& m : mates)
+        if (cheb(m.pos, at) <= Cfg::SKIRMISH_RANGE) u.push_back({m.pos, m.hp, m.power, 0.f, ranged_type(m.type) ? 3 : 1, false, true, false, false});
+    for (const auto& f : foes)
+        if (cheb(f.pos, at) <= Cfg::SKIRMISH_RANGE) u.push_back({f.pos, f.hp, f.strength, f.spell, f.ranged ? 3 : 1, f.stun, false, false, false});
+    if (use_ghosts)
+        for (const auto& g : ghosts)
+            if (g.seen != round && cheb(g.pos, at) <= Cfg::SKIRMISH_RANGE + g.slack)
+                u.push_back({g.pos, g.weight * g.hp, g.weight * g.strength, g.weight * g.spell, g.ranged ? 3 : 1, false, false, false, false});
+    FightOutcome out;
+    for (const auto& x : u) (x.ally ? out.ours0 : out.theirs0) += x.hp;
+    auto reachable = [&](const U& a, const U& b, int r, int extra) {
+        if (a.passive) return false;
+        const int closing = a.reach > 1 ? r : r + 1;  // ranged cannot walk and fire in one round
+        return cheb(a.p, b.p) - closing <= a.reach + extra;
+    };
+    std::vector<float> dmg(u.size());
+    for (int r = 0; r < rounds; ++r) {
+        std::fill(dmg.begin(), dmg.end(), 0.f);
+        for (std::size_t i = 0; i < u.size(); ++i) {
+            auto& a = u[i];
+            if (a.hp <= 0.f || a.stunned >= r) continue;
+            int pick = -1, strongest = -1;
+            for (std::size_t j = 0; j < u.size(); ++j) {
+                const auto& b = u[j];
+                if (b.hp <= 0.f || b.ally == a.ally) continue;
+                if (reachable(a, b, r, 0) && (pick < 0 || b.hp < u[static_cast<std::size_t>(pick)].hp)) pick = static_cast<int>(j);
+                if (a.stun && reachable(a, b, r, 1) && (strongest < 0 || b.dps > u[static_cast<std::size_t>(strongest)].dps)) strongest = static_cast<int>(j);
+            }
+            if (a.stun && strongest >= 0) {
+                u[static_cast<std::size_t>(strongest)].stunned = r + 1;
+                a.stun = false;
+            }
+            if (pick < 0) continue;
+            dmg[static_cast<std::size_t>(pick)] += a.dps + (a.spell > 0.f ? a.spell : 0.f);
+            a.spell = 0.f;
+        }
+        for (std::size_t j = 0; j < u.size(); ++j) {
+            if (u[j].hp <= 0.f) continue;
+            u[j].hp -= dmg[j];
+            if (u[j].hp <= 0.f && u[j].me && out.me_dies_at < 0) out.me_dies_at = r;
+        }
+    }
+    for (const auto& x : u)
+        if (x.hp > 0.f) (x.ally ? out.ours_left : out.theirs_left) += x.hp;
+    return out;
 }
 
 // Damage we can put on one champion this turn.
@@ -1603,6 +1759,15 @@ bool Bot::bank() {
         }
         if (any_safe && threatened(a) && cheb(a, pos) > bc::constants::submit_gems_range) continue;
         if (cheb(a, pos) <= bc::constants::submit_gems_range) {
+            // A tribute channel holds us still for ceil(bag/10) turns and damage does not stop
+            // it, death does: do not start one we would not live through.
+            if (Cfg::FIGHT_SIM_TRIBUTE && !foes.empty()) {
+                const int turns = std::max(1, (static_cast<int>(me.gem_count()) + 9) / 10);
+                if (simulate_fight(pos, turns, true).me_dies_at >= 0) {
+                    if (escape() || step_away(enemy_pos)) return true;
+                    continue;
+                }
+            }
             try {
                 me.submit_gems(a);
                 return true;
@@ -1781,7 +1946,7 @@ void Bot::play_turn() {
     dead_noted = false;
     g_stage = "observe";
     observe();
-    struct HpMark { Bot* b; ~HpMark() { b->prev_hp = bc::self().health(); } } hp_mark_{this};
+    struct HpMark { Bot* b; ~HpMark() { b->prev_hp = bc::self().health(); b->build_group_fields(); } } hp_mark_{this};
     if (Cfg::SCORE_POLICY) {
         const int gap = static_cast<int>(bc::global_submitted_gems(team::ally)) - static_cast<int>(bc::global_submitted_gems(team::enemy));
         standing = gap >= Cfg::LEAD_MARGIN && Cfg::SCORE_AHEAD ? 1 : gap <= -Cfg::LEAD_MARGIN && Cfg::SCORE_BEHIND ? -1 : 0;

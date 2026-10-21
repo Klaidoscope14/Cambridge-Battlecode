@@ -69,7 +69,11 @@ class Bot {
     bitboard terrain;                    // static blocking terrain
     bc::distance_field altar_field;      // distance to the nearest tribute tile
     bc::distance_field spawn_field;      // distance to our spawn
-    bc::distance_field here;             // this turn: terrain distance from me
+    bc::distance_field here;             // terrain distance from me (lazily, see ensure_here)
+    bool here_ready = false;
+    std::vector<bc::distance_field> gfield;  // per group: distance from its spawn tiles (static)
+    std::vector<char> gfield_ok;
+    int gfield_next = 0;
 
     int target = -1;
     int need = 0;          // allies the current target needs alongside us
@@ -145,6 +149,11 @@ class Bot {
     float burst_at(vec2 p) const;
     float side_power(vec2 at, bool enemy) const;
     float my_burst() const;
+    struct FightOutcome {
+        float ours0 = 0.f, ours_left = 0.f, theirs0 = 0.f, theirs_left = 0.f;
+        int me_dies_at = -1;  // round we die in, -1 if we survive
+    };
+    FightOutcome simulate_fight(vec2 at, int rounds, bool me_passive) const;
 
     float my_dps(const Group& g) const;
     float group_hp(int id) const;
@@ -153,8 +162,12 @@ class Bot {
     int allies_near(const Group& g) const;
     // Squads wait just outside the group's reach (golems hit at 4, monoliths at 5).
     static int wait_ring(const Group& g) { return std::max(Cfg::SQUAD_WAIT_RING, g.reach + 2); }
-    float group_score(int id, int dist, int* req_out = nullptr) const;
+    float group_score(int id, int dist, int* req_out = nullptr, float* value_out = nullptr, float* time_out = nullptr) const;
     int choose_target();
+    void ensure_here();
+public:
+    void build_group_fields();
+private:
     int vulture_target() const;
 
     bool dash_strike(const std::vector<vec2>& targets, int min_hits);

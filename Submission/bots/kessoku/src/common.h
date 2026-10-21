@@ -37,9 +37,31 @@ inline constexpr float FIGHT_HP_MARGIN = 0.20f;  // keep this much HP after a ca
 // Target selection.
 inline constexpr float GOLD_WEIGHT = 0.12f;
 inline constexpr float CLAIMED_PENALTY = 0.30f;
+inline constexpr float CLUSTER_VALUE = 1.0f;  // value multiplier for monster-free cluster groups (0.5: 36/70, off)
 inline constexpr float ENEMY_NEAR_PENALTY = 0.40f;
 inline constexpr float SWITCH_MARGIN = 1.30f;
 inline constexpr int RETARGET_EVERY = 4;  // rounds between full target re-scores
+// Algorithm review item 2: cached per-group distance fields replace the full-map BFS from
+// us on each re-score (same distances; built one per turn from spare fuel).
+// v25 (35 maps x 2): fields alone vs v24 37/70, field proxy zmeta 53 -> 59, zpoke 48 -> 52,
+// zhor 61 -> 66, zrush 58 -> 57, zlock2 66 -> 65, camper/old bot/starters 70/69. Re-scoring every
+// 8 or 12 rounds on top: totals over those five 267 / 256 vs 271 (better vs mirror/proxy, worse
+// vs the ranged and Heart-of-Ruin bots) -> RETARGET_EVERY stays 4.
+inline constexpr bool GROUP_FIELDS = true;
+inline constexpr int FIELD_BUILD_MIN = 45000;  // spare fuel needed to build one more field
+// Algorithm review item 3: beam search over target tours (needs every group field built).
+// Measured: 11/70 vs v24, 39/70 vs the proxy (look-ahead pulls bodies to far groups) -> off.
+inline constexpr bool TOUR_PLAN = false;
+inline constexpr int TOUR_CANDIDATES = 8;
+inline constexpr int TOUR_BEAM = 4;
+inline constexpr int TOUR_DEPTH = 3;
+// Algorithm review item 6: bounded focus-fire simulation of the visible skirmish.
+// Measured with re-score 12: tribute check gave identical games (never fires locally); with the
+// outmatched sim too 35/70 (fewer deaths vs the proxy, 359 -> 306) -> both off.
+inline constexpr bool FIGHT_SIM_TRIBUTE = false;    // refuse a tribute channel we would not survive
+inline constexpr bool FIGHT_SIM_OUTMATCHED = false; // outmatched = we die, or they keep more health
+inline constexpr int FIGHT_SIM_ROUNDS = 6;
+inline constexpr float FIGHT_SIM_MARGIN = 0.15f;    // their remaining share minus ours that counts as losing
 // Fuel (100x100 maps ran out mid-turn ~300 times a game on 01big_world): skip a re-score or
 // the detour field when this turn cannot afford it, cache the detour field per target, and
 // optionally re-score less often on big maps.
@@ -167,7 +189,7 @@ inline constexpr int MONOLITH_MAX_NEED = 2;  // never tie up more helpers than t
 // +12% team gold and mirror 11/18 (parity 9/18), but ~28 rounds slower vs the
 // starters. The biggest-bag rule was 15-35 rounds slower everywhere -> off.
 // Inert unless Vesper is drafted (the draft rarely picks her).
-inline constexpr bool CAPTURE_ASSIGN = true;
+inline constexpr bool CAPTURE_ASSIGN = true;  // v25 re-test: off 29/70 (Vesper +33% gold on captures beats the idle bags)
 inline constexpr int CAPTURE_GOLD_MIN = 60;
 inline constexpr bool CAPTURE_BY_BAG = false;  // biggest bag captures when Vesper is not involved
 inline constexpr int CAPTURE_RANGE = 6;  // allies this close to the group are candidates
