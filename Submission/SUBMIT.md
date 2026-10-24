@@ -1,6 +1,6 @@
 # How to submit (CAMBC 2026)
 
-`Submission/` is a `cambc` workspace (cambc / SDK 3.0.2; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++.
+`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v29, also frozen as `bots/v29`; `bots/v28` is the rollback).
 Ladder team: **HighCortisol** (team id `58271d23-d86a-48de-987a-5d82c983d7db`).
 
 ## Where the submission zip lives
@@ -14,9 +14,10 @@ cambc build kessoku --release                                     # same mode as
 cambc run kessoku starter-cpp --map maps/00lanes.map26a --view    # watch a match
 rm -f ../kessoku.zip && cambc bundle kessoku --output ../kessoku.zip   # bundle never overwrites
 ```
-Maps: `maps/00*.map26a` and `maps/01*.map26a` are the 35-map ladder pool (`cambc maps list`); `cambc init` downloads them (rename hyphens to underscores). Older copies were extracted from our
-ranked replays (`python3 tools/refresh_maps.py <team id>`; `cambc maps pull` fails). The
-unprefixed maps are older versions kept for reference.
+Maps: `maps/00*.map26a` and `maps/01*.map26a` are the 40-map ladder pool (`cambc maps list`). `cambc maps pull` / `cambc init`
+re-download some maps under hyphenated names: delete the copies identical to an underscore file and rename new ones to
+underscores, or `tools/ab.py` plays those maps twice. `python3 tools/refresh_maps.py <team id>` extracts maps from our ranked
+replays as a fallback. The unprefixed maps are older versions kept for reference.
 Each team's stdout is inside the replay bundle (`.repl26a` is a zip: `team-a.stdout`, `team-b.stdout`).
 Turn errors print as `bot error [stage]: ...`.
 
@@ -24,16 +25,18 @@ Turn errors print as `bot error [stage]: ...`.
 Matches are deterministic, so compare against a frozen copy of the live version; a mirror at
 parity wins half the games.
 ```bash
-mkdir -p bots/kbase && unzip -o -q ../kessoku.zip -d bots/kbase && cambc build kbase
-python3 tools/ab.py mytest kessoku kbase            # all 35 pool maps, both sides, 8 in parallel
-python3 tools/ab.py mytest_op kessoku oldpy 01hooks # specific maps; oldpy = old Python ganker bot
-rm -rf bots/kbase                                    # remove the frozen copy afterwards
+cambc build v29                                     # frozen copy of the live version
+python3 tools/ab.py mytest kessoku v29              # all 40 pool maps, both sides, 8 in parallel
+python3 tools/ab.py mytest_g kessoku zgank 00lanes  # specific maps
 ```
 `tools/ab.py` wraps `cambc run-batch --release` and prints wins, tributed gems, deaths, gold
 earned and bot faults per game. Results are cached per TAG under `$TMPDIR/kessoku_ab/`, so use
 a new TAG (or delete the folder) after changing a bot. For variants, copy `bots/kessoku` to a
 new folder, flip a `Cfg::` switch, and run `cambc build <variant>` once before parallel runs
 (concurrent builds of the same bot break the first games).
+Opponent set: `zgank` (ladder-style: dive draft, Bruiser items, chases weakened enemies; reproduces our ladder
+deaths, v28 44/80), the field `zmeta zpoke zhor zrush zdive0` (sum over the five is the main local number),
+`zlock2` (altar locks), `zcamp` (altar campers), `starter-cpp`, `starter-python`.
 Debug traces: `cambc run-batch --log-limit 30000000 manifest.txt` keeps long stdout logs.
 
 ## Ladder data
@@ -42,7 +45,9 @@ cambc matches list --team <team id> --kind ranked --limit 100 --json   # paginat
 cambc matches summary <match id> --json    # saves match-<id>.json into the CURRENT folder
 ```
 In summaries, a death's killer often appears as `Unknown entity kind (1)` with the enemy
-champion's roster id: those are champion kills.
+champion's roster id: those are champion kills. Full replay state (positions, health, gems at
+any step) can be read in Node with the visualiser's engine wasm; see MetaResearch_v25.md
+("ladder loss replays read death by death").
 
 ## Submit
 Upload `kessoku.zip` on the platform's Submissions page (or `cambc login` then `cambc submit kessoku`).

@@ -92,7 +92,6 @@ class Bot {
     std::vector<vec2> tribute_tiles;  // tiles a champion can tribute from
     int detour = 1 << 20;        // extra tiles to bank on the way to the target
     int detour_round = -1000;
-    int focus_type = -1, focus_round = -1000;  // FOCUS_STICKY: last enemy we hit
     bc::distance_field detour_field;  // distance from detour_group's spawn tiles
     int detour_group = -1;
     bool mono_dominant = false;  // monoliths hold most of the map's gems
@@ -104,13 +103,6 @@ class Bot {
     bool help_mine = false;      // we wrote the current request
     int capture_group = -1;
     int empty_group = -1, empty_turns = 0;  // turns next to a target showing nothing to do
-    bool zero_feed = false;   // gem-dead game: protect the gold tiebreak (ZERO_FEED)
-    int mono_only = -1;       // every gem group is a monolith (lazy: -1 unknown)
-    int contest_turns = 0;    // consecutive turns an enemy stood on our capture region
-    int sit_group = -1, sit_since = 0;  // respawn denial (STARVE)
-    vec2 sit_tile{};
-    bool enemy_field_ready = false;
-    bc::distance_field enemy_field;
     int bank_blocked_until = -1;  // no reachable tribute tile until this round
     unsigned last_gems = 0;
     unsigned last_gold = 0;
@@ -160,6 +152,8 @@ class Bot {
     bool move_to(bitboard goals, bool allow_dash = true);
     bool step_away(const std::vector<vec2>& threats);
     bool escape();
+    bool flight_futile() const;
+    bool converge();
 
     void assess_threat();
     void ensure_danger();
@@ -190,8 +184,6 @@ private:
     bool dash_strike(const std::vector<vec2>& targets, int min_hits);
     bool fight_enemies(bool kills_only = false);
     bool try_lock_altar();
-    bool starve_ok(int g);
-    bool camp_trap();
     bool break_channels();
     bool deny();
     bool hand_off_aggro();

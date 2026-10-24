@@ -78,9 +78,16 @@ void play_draft() {
         bc::draft::pick(CD::vesper_vale);
         return;
     }
+    int opening = 3;  // DRAFT3: fewer forced openers on 3-champion maps
+    if constexpr (Cfg::DRAFT3 < 3) {
+        try {
+            if (bc::draft::team_size() <= 3) opening = Cfg::DRAFT3;
+        } catch (...) {
+        }
+    }
     if (Cfg::TEST_FORCE_RANGED || Cfg::RANGED_META)  // patch 3.0 meta: open Vesper, Tavi, Willow
         for (auto p : {CD::vesper_vale, CD::tavi, CD::willow})
-            if (std::find(ours.begin(), ours.end(), p) == ours.end()) {
+            if (opening-- > 0 && std::find(ours.begin(), ours.end(), p) == ours.end()) {
                 bc::draft::pick(p);
                 return;
             }

@@ -2,12 +2,12 @@
 """Parallel A/B runner: both sides of every map via `cambc run-batch`, one line per game + a summary.
 
 usage (from Submission/): python3 tools/ab.py TAG BOT OPP [map ...]
-  - no maps: every ladder-pool map in maps/ (the 00*/01* files, 35 since cambc 3.0)
+  - no maps: every ladder-pool map in maps/ (the 00*/01* files, 40 on 2026-10-24)
   - results go to $AB_OUT/TAG (default: $TMPDIR/kessoku_ab/TAG); finished games are reused
     on a rerun with the same TAG, so delete that folder when a bot changes
   - JOBS=8 sets parallel runner processes; games use --release, as on the platform
-Freeze the live version as the opponent first, e.g.:
-  mkdir -p bots/kbase && unzip -o -q ../kessoku.zip -d bots/kbase && cambc build kbase
+Use the frozen live version as the mirror opponent, e.g.:
+  cambc build v29 && python3 tools/ab.py mytest kessoku v29
 A mirror at parity wins half the games (matches are deterministic).
 """
 import json, os, subprocess, sys, tempfile

@@ -117,6 +117,9 @@ inline constexpr int HEALTH_PCT = 100;
 //   behaviour with the old draft 33/70. RANGED_META switches the draft (old scores if false).
 // - Dash strike (aim dashes with landing damage/stun) 37/70; with Heart of Ruin 44/70 vs without.
 inline constexpr bool RANGED_META = true;
+// 3-champion maps: force only Vesper + Tavi, then score (picks Varg). Ladder v25 won 43% on 3-champion
+// maps vs 55% on 5. Measured 2026-10-23 on the 6 local 3-champion maps: 125/132 vs 121/132, mirror 8/12.
+inline constexpr int DRAFT3 = 2;  // 3 = always open Vesper, Tavi, Willow
 inline constexpr float HOR_DRAFT_SCORE = 0.f;       // Heart of Ruin (added in cambc 3.0)
 inline constexpr bool DASH_STRIKE = true;   // aim dashes that have a landing effect at enemies/camps
 inline constexpr int DASH_STRIKE_CAMPS = 2;   // camps the landing must catch to be worth the cooldown
@@ -134,6 +137,14 @@ inline constexpr float SQUAD_HEAL_FIRST = 0.75f;  // heal at spawn before waitin
 inline constexpr float LETHAL_MARGIN = 1.15f;  // retreat when visible burst * this reaches our HP
 inline constexpr float DANGER_TILE = 0.60f;    // avoid tiles whose burst exceeds this share of HP
 inline constexpr float OUTMATCHED = 1.25f;     // enemy fight power over ours that counts as losing
+// Ladder replays (2026-10-24): 97% of our deaths are untraded; victims flee and are run down
+// (ranged champions cannot move and shoot in one turn), while allies within 8 tiles keep farming.
+// STAND_SHOOT: when the chaser reaches us next turn whatever we do, fight back instead of fleeing.
+// CONVERGE: join a skirmish a teammate is in when our side holds the fight power there.
+inline constexpr bool STAND_SHOOT = true;
+inline constexpr bool CONVERGE = true;
+// Measured 2026-10-24 (40 maps x 2 sides, vs v28): zgank 51/80 (44), field 338/400 (327), mirror 49/80;
+// STAND_SHOOT alone 311 (mirror 40), CONVERGE alone 330 / zgank 52.
 inline constexpr int SKIRMISH_RANGE = 7;       // champions this close take part in a fight
 inline constexpr int LOSING_RANGE = 4;         // outmatched with an enemy this close: disengage (5: 18/42, 6: 15/42 vs v17)
 // Feeding fixes (v18), measured vs v17 on 21 maps: safe recall 22/42 (deaths 326 -> 285);
@@ -165,9 +176,6 @@ inline constexpr int THREAT_BANK_RANGE = 8;
 // chasing recallers and spending spells on them cost farming (starter-cpp 423 -> 436).
 inline constexpr bool BREAK_CHANNELS = true;
 inline constexpr float BREAK_RECALL = 2.0f;
-// Focus stickiness: keep hitting the enemy we hit last turn so damage is not spread.
-inline constexpr bool FOCUS_STICKY = false;
-inline constexpr float FOCUS_STICKY_BONUS = 0.3f;  // on the 0..1 missing-health scale
 inline constexpr float BREAK_TRIBUTE = 3.0f;    // only bags of 10+ gems
 inline constexpr float BREAK_TELEPORT = 2.5f;
 inline constexpr bool BREAK_CHASE = false;          // melee steps in to hit a recaller
@@ -209,9 +217,7 @@ inline constexpr int MONOLITH_MAX_NEED = 2;  // never tie up more helpers than t
 inline constexpr bool CAPTURE_ASSIGN = true;  // v25 re-test: off 29/70 (Vesper +33% gold on captures beats the idle bags)
 inline constexpr int CAPTURE_GOLD_MIN = 60;
 inline constexpr bool CAPTURE_BY_BAG = false;  // biggest bag captures when Vesper is not involved
-inline constexpr int CAPTURE_RANGE = 6;
-// Ladder v25: Willow lost 17% of the gems she collected to champions (Vesper 4%, Varg 7%).
-inline constexpr bool WILLOW_YIELDS = false;  // non-Vesper gem rewards go to a non-Willow ally near  // allies this close to the group are candidates
+inline constexpr int CAPTURE_RANGE = 6;  // allies this close to the group are candidates
 inline constexpr bool TEST_FORCE_VESPER = false;  // A/B only: draft Vesper Vale first
 // Ryth turns 1% of bonus health into strength and usually tanks camps first.
 // 0 = Monster(str) -> Jungle(hp) -> Power(str) like everyone,
@@ -351,40 +357,6 @@ inline constexpr int SPLIT_MIN_GEMS = 60;
 // Empty-group skip: a target next to us with no visible live camps and no reward
 // is skipped for a while. Fixes a full-game deadlock on boss_battle (a capturer on
 // the spawn tile boxed in by allies waiting for camps that cannot respawn under him).
-// Meta research A2 (MetaResearch_v25.md): an enemy on our capture region resets the timer; fight
-// while the skirmish is ours, fold when outmatched or after CONTEST_FOLD_TURNS contested turns.
-// Measured 2026-10-22 vs v26 (70 games each): zmeta 59->57, zpoke 52->48, zhor 66->67, zrush 58->59,
-// mirror 35; theft of our clears not reduced (1.70 -> 1.84 /game vs zmeta) -> off.
-inline constexpr bool CAPTURE_CONTEST = false;
-inline constexpr int CONTEST_FOLD_TURNS = 6;
-inline constexpr int CONTEST_SKIP_ROUNDS = 20;
-// Meta research A5: gem-dead game (both scores 0 and we cannot score: monolith-only gems or a
-// blocked altar) -> avoid groups with enemies near, retreat early, fight only for a kill.
-// Measured: zmeta 56, zpoke 49, zhor 64, zrush 56, mirror 34. On contest it turned 2/2 wins (deaths
-// 13-114, gold +25K) into 0/2 (deaths 61-12, gold -32K): a team that will not fight back gets hunted -> off.
-inline constexpr bool ZERO_FEED = false;
-// Meta research B2 camp trap: wake a camp of this strength or more (elk 60) within 3 of a
-// channelling enemy that still needs this many rounds, ending farther from the camp than it.
-// Measured 2026-10-22 vs v26: mirror 35, zmeta 59 (=), zpoke 51 (52), zhor 66 (=), zrush 58 (=); it fired
-// only 3 times in 350 games (starfish, hooks) -> no measurable effect, off.
-inline constexpr bool CAMP_TRAP = false;
-// Meta research B3 respawn denial: when ahead, an even-numbered body holds the spawn tile of an
-// enemy-side group it just captured (the group stays at respawning:0 while the tile is occupied).
-// Measured 2026-10-22 vs v26: mirror 35, zmeta 59 (=), zpoke 51 (52), zhor 66 (=), zrush 58 (=); 279 sits
-// (median 70-240 rounds) but only in games already won, which it slowed by 35-65 rounds -> off.
-inline constexpr bool STARVE = false;
-inline constexpr int STARVE_LEAD = 100;
-inline constexpr int STARVE_ROUND = 600;
-inline constexpr int STARVE_MAX_BAG = 30;
-inline constexpr float STARVE_LEAVE_HP = 0.40f;
-inline constexpr int STARVE_MAX_ROUNDS = 300;
-inline constexpr int STARVE_END_ROUND = 1950;
-inline constexpr float CAMP_TRAP_MIN_STR = 60.f;
-inline constexpr int CAMP_TRAP_MIN_TURNS = 2;
-inline constexpr int CAMP_TRAP_MIN_BAG = 10;
-inline constexpr int ZERO_FEED_ROUND = 300;
-inline constexpr int ZERO_FEED_AVOID = 8;
-inline constexpr float ZERO_FEED_RETREAT_HP = 0.60f;
 inline constexpr bool EMPTY_GROUP_SKIP = true;
 inline constexpr int EMPTY_GROUP_TURNS = 4;
 inline constexpr int EMPTY_GROUP_SKIP_ROUNDS = 20;

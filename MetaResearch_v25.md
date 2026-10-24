@@ -457,3 +457,123 @@ moves results against the current opponent set, because each either triggers rar
 or only in games already decided (B3), and the passive ones (A5) invite punishment. The losses
 that remain are decided earlier (round 300-700 collection lead and fights), which is where the
 next experiments should aim.
+
+### 2026-10-22: focus stickiness and Willow capture yield measured, neutral
+
+Code-review follow-ups, both behind switches (off). vs v26 baselines zmeta 59, zpoke 52, zhor 66, zrush 58 (sum 235):
+- `FOCUS_STICKY` (+bonus in fight_enemies for the enemy hit within the last 2 rounds): bonus 0.3 ->
+  58/49/67/57 = 231, mirror 34/70; bonus 1.0 -> 58/49/67/61 = 235, mirror 36/70. Neutral.
+- `WILLOW_YIELDS` (non-Vesper gem rewards go to a non-Willow ally near; ladder v25: Willow lost 17% of
+  collected gems to champions vs Vesper 4%): 57/49/64/61 = 231, mirror 36/70. Willow collected
+  116 -> 65 gems/game locally but our gems lost to champions barely moved; slightly negative.
+Second review: altar flip-flop already handled by any_safe; spawn-heal loop impossible (spawn heals
+to full at that turn's end); Prism never drafted on the ladder; ZERO_FEED is off. Zip unchanged (v26).
+
+### 2026-10-23: review archetypes built as adversaries, neither exploit lands
+
+Forks of zmeta with one draft (Vendetta, Ren, Varg, Stellar, Ryth), switch ADV_ROLE: zven control,
+zdip altar dipper (Ren/Vendetta walk within 3 of an altar every ~40 rounds, our-side altars first,
+alternating on 2-altar maps), zamb bush ambusher (from r120 Vendetta, plus Ren on >3-champion maps,
+lurks in the bush nearest our approach to our main altar, hunts bags >= 10 or tribute channels).
+v26 (kbase), 70 games each: zven 60, zdip 68, zamb 68. Our gems lost to champions per game 18.4 /
+25.8 / 14.3; tributes per game 25.2 / 25.2 / 24.5. The dipper costs us ~7 gems a game but no
+tributes (no banking deadlock); the ambush posts feed kills. Both behaviours weaken the attacker
+more than they hurt us. No bot change.
+
+### 2026-10-23: red-team review 1 measured; v27 = 3-champion draft fix
+
+Switches on the current source (base 226 on zmeta/zpoke/zhor/zrush; 70 games each):
+DASH_THREAT 225 (zhor 63=63), LOCK_FIX 229 but zlock2 59 vs 65 (rejected), WARD_ALTAR 224,
+FIGHT_SIM_OUTMATCHED + stun-timing fix 228 (mirror 38/70, marginal). DRAFT3=2 (3-champion maps force
+only Vesper+Tavi, scoring then picks Varg; ladder v25 won 43% on 3-champion maps vs 55% on 5):
+125/132 vs 121/132 over 11 opponents on the 6 local 3-champion maps, mirror 8/12. DRAFT3=1 worse.
+Also fixed a read of a destroyed temporary in break_channels (`const auto& ab = me.abilities()[i]`).
+v27 = v26 source + DRAFT3=2 + that fix: zmeta 62 (59), zpoke 52 (52), zhor 67 (66), zrush 60 (58)
+= 241 vs 235; all 232 games off 3-champion maps identical to v26; 3-champion games 44/48 vs 38/48;
+mirror 37/70. kessoku.zip rebuilt from bots/v27 (v26 kept as bots/kbase).
+
+### 2026-10-23: red-team review 2 (decision-logic A-F) measured on v27, none ship
+
+v27 base: zmeta 62, zpoke 52, zhor 67, zrush 60 = 241. Variants (sum, mirror vs v27):
+A xwin (winning bag ignores embargo and the mid-camp gate) 237, 35; F xesc (escape marks nearby
+altars hot instead of a global embargo) 236, 34; B xcast (camp spells before walking when nothing is
+in basic reach) 226, 38 (zpoke 44, zhor 59); C xhold (drop a capture held >12 rounds with an enemy
+adjacent) 238, 35; D xmarg (camp-fight reserve = retreat floor + 5%) 220, 27; E xpart (unseen group
+members at static share) 223, 39. A and C are within re-roll noise; B, D, E clearly worse. Zip stays v27.
+v28 = v27 + fix A (winning bag banks first, ignores the embargo and the mid-camp gate), shipped on the
+user's call as a correctness fix: identical to the measured xwin (237 vs 241, mirror 35/70). Of 280 games,
+243 identical and 37 changed; most changed wins just end a few rounds earlier. The 3 games lost (01the_farm,
+01big_world, 00eight vs zpoke) diverged at rounds 104-1839 with no bag able to win, i.e. fuel re-roll noise,
+not the fix. kessoku.zip = v28 (v27 zip kept in scratchpad).
+
+### 2026-10-24: v28 on the ladder (uploaded as "v27") and why we lose
+
+1220 ranked games 2026-10-22 19:40 -> 2026-10-24 13:00 UTC (v26 period before: 680 games).
+Overall 50% (v26 48%); 3-champion maps 44% (37%), 4: 66% (53%), 5: 46% (48%). Rank 232, rating 1632;
+49% vs the 1600-1750 band where nearly all games are. Worst maps: monolith 2/30, lost_world 3/33,
+lanes 4/36, collision 3/25, starfish 3/22, contest 6/33, elkring 7/37, great_wall 9/42; locally v28
+wins most of these, and 41/50 on the 5 newly pulled maps (now in maps/, 40 total).
+469 summaries (scratchpad lad28/): losses are fights. Collected equal at r300 (median gap 0), behind
+at r600 in 61% and r1000 in 80% of losses. Our deaths 17.5/game in losses vs 6.3 in wins, from the
+start (2.1 before r250 vs 0.8); 97% untraded (no enemy death within 6 rounds), 78% isolated. Killers:
+Vesper, Heart of Ruin, Marcella, Vendetta, Ryth; most common enemy draft is exactly those (59 games,
+46%). Our Varg, Tavi, Willow die 3.7-3.8 times a game each in losses.
+Ladder-meta adversary on our own engine (bots/zdive: that draft, Heart+Vendetta hunt anything in
+sight; zdive0 draft only): v28 wins 67/80 and 58/80 with only 2.5-3.7 deaths a game -> our engine
+playing their draft does not reproduce ladder pressure; local tests cannot measure anti-pick-off fixes.
+
+### 2026-10-24: ladder loss replays read death by death
+
+Tooling: scratchpad lad28/rep/rp.js drives the visualiser engine wasm (engine_v1_0_3.wasm, taken
+from the cambc 3.0.5 wheel run with HOME in the scratchpad; the installed 3.0.4 only ships 1.0.2,
+which rejects ladder replays with error 11) from Node: Game_FromReplayFileBytes, Timeline_Seek,
+ReadTimelineState (40152-byte snapshot: champions at 196 + 252*k with team/type/x/y/hp/max/alive/
+gold/gems/kills, camps at 4228 + 28*k). deaths.js binary-searches each death round from the
+summary's kill events and reads the state 10/5/2/0 rounds before.
+1065 of our deaths in 35 lost v28 games: 10 rounds before death the victim is at 95% HP (median),
+86% already have an enemy within 8; HP then drains to 66% at -5 and 41% at -2 (only 20% die from
+>= 80% HP two rounds out). Only 7% carry 20+ gems, 15% stand by a camp, 30% die within 6 tiles of
+our spawn. Local numbers at -10: we outnumber 42%, even 30%, outnumbered 28% -> we lose fights we
+should not take, slowly. OUTMATCHED = 1.25 keeps us in fights we narrowly lose, and side_power counts
+enemy dps as strength + spell/8 (no stuns, dash landings, Heart's missing-health bonus).
+Items: winners against us buy Power Strength (66/game) and Bruiser shards/emblems (52 Str, 25 HP, 17
+Focus; Bruiser emblem = 5 + 1 of each other stat = 7 shards for 150 gold, Power = 6); we never buy
+Bruiser. With our 1:1 health/strength build the stat totals are nearly equal; the real item gap is
+gold volume (their 8.9k vs our 4.8k in losses), largely a consequence of the kills.
+Draft ideas tested on 40 maps (80 games/opponent, v28 327/400): golems as hostile 328 (mirror 41/80),
+Heart of Ruin as 4th pick 309 (mirror 44/80) -> neither ships.
+Anti-pick-off variants on v28, 40 maps x 2 sides (v28 327/400 on zmeta/zpoke/zhor/zrush/zdive0):
+ptrend (lost >= 20% max HP in 5 rounds and below every nearby enemy's HP share -> outmatched) 319,
+mirror 41/80; OUTMATCHED 0.9 305, mirror 37; OUTMATCHED 0.7 278, mirror 37. Retreating earlier gives
+up farming and does not even cut deaths (pk07 vs zpoke 720 deaths vs 668): fleeing champions get run
+down. Replays again: 61% of victims have an ally within 8 two rounds before death but only 37% within
+4, and 97% of deaths are untraded -> allies are near but do not join the fight. Local opponents never
+punish the current behaviour, so none of this is measurable locally; the ladder is the only test.
+
+### 2026-10-24: cambc 3.0.5 (engine 1.0.3) and a ladder-faithful adversary (bots/zgank)
+
+Upgraded cambc 3.0.4 -> 3.0.5 (SDK refreshed; API unchanged; 3.0.4 SDK backed up in scratchpad).
+v28 on engine 1.0.3 scores identically to 1.0.2 vs every bot, so the local/ladder gap is opponent behaviour.
+Stun scan (222 ladder deaths, every step of the last 12 rounds): victims keep moving (median 10 moves in
+12 rounds), stunned at some point in 57% but a small share of the time, 0-1 enemies adjacent, losing ~10%
+max HP per round: they flee and are run down; ranged champions cannot move and shoot in one turn, so the
+fleeing deal no damage back.
+bots/zgank = v28 engine + ladder dive draft (Heart, Vesper, Marcella, Ryth, Vendetta / Ren) + Bruiser and
+Power Strength items, no passive emblems + chase: pursue any visible enemy within 6 whose HP share is
+below ours when not outmatched. (v1 hunted anything within 9 and collapsed its own economy.)
+v28 vs zgank: 44/80 (ladder 50%); our deaths 8.3 in wins / 18.8 in losses (ladder 7.6 / 18.3); 92% of our
+deaths untraded (ladder 97%); per-map win-rate correlation with the ladder 0.37; the worst ladder maps
+(monolith, lanes, lost_world, collision, starfish, contest) are 4/12 locally. zgank is the test bed for
+fight fixes from now on.
+
+### 2026-10-24: fight fixes measured against zgank -> v29
+
+On v28, 40 maps x 2 sides (80 games each; v28: zgank 44, field zmeta/zpoke/zhor/zrush/zdive0 327/400):
+- STAND_SHOOT (escape(): when a step away leaves us inside some chaser's next-turn reach - melee 2
+  (+2 dash), ranged 3 (+1 reset) - and home is over 2 tiles off, fight back instead): zgank 45,
+  field 311, mirror 40 -> worse alone.
+- CONVERGE (before farming: a visible enemy within 9 that is within 4 of a teammate, our side_power
+  there >= theirs, us above 50% HP with < 30 gems -> walk in and attack): zgank 52, field 330, mirror 48.
+- Both: zgank 51, field 338 (zmeta 70 =, zpoke 62 +6, zhor 74 -1, zrush 71 +3, zdive0 61 +3), mirror 49/80.
+  vs zgank 12 games flipped to wins, 5 to losses; lanes 0/2 -> 2/2, collision 1/2 -> 2/2.
+v29 = v28 + both; kessoku.zip rebuilt (v28 zip kept in scratchpad). Ladder baseline to beat: v28 50%.
