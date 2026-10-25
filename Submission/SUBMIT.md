@@ -1,6 +1,6 @@
 # How to submit (CAMBC 2026)
 
-`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v35 = v31 + the reverse_spiral standoff fix, also frozen as `bots/v35`; `bots/v31`, `bots/v30`, `bots/v29` and `bots/v28` are rollbacks).
+`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v35 = v31 + the reverse_spiral standoff fix, also frozen as `bots/v35`; `bots/v31` and `bots/v28` are rollbacks).
 Ladder team: **HighCortisol** (team id `58271d23-d86a-48de-987a-5d82c983d7db`).
 
 ## Where the submission zip lives

@@ -728,3 +728,12 @@ ZERO_GEM_DISCOUNT (0-gem groups x0.3 while an enemy was seen in the last 100 rou
 zstack/zgank/zmeta/zpoke: 143-150 (+5 -12), SPRT reject; on lanes still lost to zstack-A (11 bottom deaths, was 16)
 and zgank-B (21, was 15). Conclusion: lanes is lost on fight quality in the gem lane, the same root as the other
 ladder losses, not on lane allocation. Not shipped; zip stays v35. zstack kept as an adversary for lanes.
+
+### 2026-10-25: repo purge
+
+Deleted: 42 macOS " 2" copies (14 tracked SDK/cmake files - identical copies or the older pre-3.0.5 versions - plus
+empty " 2" folders and stale " 2" build caches; nothing referenced them), the unused Rust and OCaml SDKs and templates
+(cambc.toml lists only python and cpp; `cambc init` restores them), and the superseded bot copies v29, v30 and the dev
+copies v34, v36 (all their switches were rejected; results above). Kept: kessoku (= v35), v35, v31 and v28 (rollbacks),
+the test opponents and zgeo. The knowledge graph had no zero-degree nodes; the only file linked to nothing else was the
+OCaml template's modules.txt, removed with the OCaml SDK.
