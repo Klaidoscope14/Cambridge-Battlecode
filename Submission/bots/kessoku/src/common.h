@@ -149,6 +149,19 @@ inline constexpr bool CONVERGE = true;
 // Features (standardised): log hp ratio, log dps ratio, bodies diff, enemy stuns / dashes / resets ready, our
 // hp share, burst/our hp (cap 3), enemy hp share, nearest/7, enemy ranged, bag/100.
 inline constexpr bool FIT_FIGHT = true;
+// CONVERGE_FIX (00reverse_spiral standoff, traced 2026-10-25): with the spawns adjacent, enemies standing on their
+// own spawn (unreachable, healed to full every turn) kept converge() choosing a fight it could not act on, and it
+// returned "done" anyway, so our champions stood on the spawn for 2000 rounds. Ignore enemies on their spawn, and
+// only end the turn when converge() actually attacked or moved.
+inline constexpr bool CONVERGE_FIX = true;      // converge() ignores enemies standing on their own spawn
+inline constexpr bool CONVERGE_ACT_ONLY = false; // ...and ends the turn only if it attacked or moved (measured: worse alone, 113-122)
+// SPAWN_TARGET_SKIP (same trace): ranged champions shot enemies standing on their own spawn (healed to full every
+// turn) every turn; for ranged champions moving and attacking share one allowance, so they never walked off our
+// spawn. In fights, ignore enemies on their spawn unless we can kill them this turn.
+inline constexpr bool SPAWN_TARGET_SKIP = true;
+// Measured 2026-10-25 (v35 = v31 + CONVERGE_FIX + SPAWN_TARGET_SKIP): reverse_spiral standoffs gone (real games in
+// the mirror and vs v31/v30/zgank/zdive0); vs v31 on all 40 maps x zgank/zmeta/zpoke/zdive0: 243-243 (+5 -5);
+// mirror 43/80. Each fix alone keeps the standoff; CONVERGE_ACT_ONLY was worse (113-122).
 inline constexpr float FIT_THRESHOLD = 0.20f;
 // Measured 2026-10-25 vs v30 (tools/sprt.py): threshold 0.043 24-32, 0.025 24-32 (both SPRT reject: fleeing more
 // gets us run down), 0.09 46-47, 0.20 50-47 on 12 PvP maps vs zgank/zdive0/zpoke and 67-63 on 12 other maps vs

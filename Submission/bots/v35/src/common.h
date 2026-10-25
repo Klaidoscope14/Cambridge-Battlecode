@@ -143,21 +143,33 @@ inline constexpr float OUTMATCHED = 1.25f;     // enemy fight power over ours th
 // CONVERGE: join a skirmish a teammate is in when our side holds the fight power there.
 inline constexpr bool STAND_SHOOT = false;  // v30: off. Ladder v29 (95 games) 45% vs ~52% expected, deaths/loss 18.5 vs 16.4
 inline constexpr bool CONVERGE = true;
-// Plan_v29 R1 (isolation cost; ladder deaths are ~80% isolated and ~95% untraded). The engine's fields are
-// unweighted, so: ISO_PATH routes within ISO_RANGE of an ally while an enemy (seen or remembered) is within
-// ISO_THREAT_RANGE, falling back to normal routing; ISO_TARGET scales the score of a group with an enemy
-// near it and no ally within ISO_TARGET_ALLY by ISO_TARGET_MULT.
-inline constexpr bool ISO_PATH = false;
-inline constexpr bool ISO_TARGET = false;
-inline constexpr int ISO_RANGE = 4;
-inline constexpr int ISO_THREAT_RANGE = 10;
-inline constexpr int ISO_TARGET_ALLY = 6;
-inline constexpr float ISO_TARGET_MULT = 0.5f;
-// Plan_v29 R3 (task assignment): at each re-score, assign us and the allies we see to our best
-// R3_CANDIDATES groups so the summed score is highest (squad groups take up to req + 1 bodies), and go
-// where the assignment sends us instead of to our own greedy best. Claims still settle collisions.
-inline constexpr bool R3_ASSIGN = false;
-inline constexpr int R3_CANDIDATES = 8;
+// Plan_v29 R2 FIT_FIGHT: "outmatched" = P(we die within 8 rounds) >= FIT_THRESHOLD, from a logistic model fitted
+// to 223K skirmish rows of v30 vs zgank/zdive0/zpoke (40 maps x 2 sides). Test AUC 0.889 vs 0.705 for the
+// OUTMATCHED power-ratio flag; at the flag's firing rate the death rate when it does not fire halves (1.7% -> 0.8%).
+// Features (standardised): log hp ratio, log dps ratio, bodies diff, enemy stuns / dashes / resets ready, our
+// hp share, burst/our hp (cap 3), enemy hp share, nearest/7, enemy ranged, bag/100.
+inline constexpr bool FIT_FIGHT = true;
+// CONVERGE_FIX (00reverse_spiral standoff, traced 2026-10-25): with the spawns adjacent, enemies standing on their
+// own spawn (unreachable, healed to full every turn) kept converge() choosing a fight it could not act on, and it
+// returned "done" anyway, so our champions stood on the spawn for 2000 rounds. Ignore enemies on their spawn, and
+// only end the turn when converge() actually attacked or moved.
+inline constexpr bool CONVERGE_FIX = true;      // converge() ignores enemies standing on their own spawn
+inline constexpr bool CONVERGE_ACT_ONLY = false; // ...and ends the turn only if it attacked or moved (measured: worse alone, 113-122)
+// SPAWN_TARGET_SKIP (same trace): ranged champions shot enemies standing on their own spawn (healed to full every
+// turn) every turn; for ranged champions moving and attacking share one allowance, so they never walked off our
+// spawn. In fights, ignore enemies on their spawn unless we can kill them this turn.
+inline constexpr bool SPAWN_TARGET_SKIP = true;
+// Measured 2026-10-25 (v35 = v31 + CONVERGE_FIX + SPAWN_TARGET_SKIP): reverse_spiral standoffs gone (real games in
+// the mirror and vs v31/v30/zgank/zdive0); vs v31 on all 40 maps x zgank/zmeta/zpoke/zdive0: 243-243 (+5 -5);
+// mirror 43/80. Each fix alone keeps the standoff; CONVERGE_ACT_ONLY was worse (113-122).
+inline constexpr float FIT_THRESHOLD = 0.20f;
+// Measured 2026-10-25 vs v30 (tools/sprt.py): threshold 0.043 24-32, 0.025 24-32 (both SPRT reject: fleeing more
+// gets us run down), 0.09 46-47, 0.20 50-47 on 12 PvP maps vs zgank/zdive0/zpoke and 67-63 on 12 other maps vs
+// zmeta/zhor/zrush, mirror 23/40 (deaths 553 vs 421); 0.35 37-44.
+inline constexpr float FIT_MU[12] = {0.513183f, 0.517883f, 0.5948f, 0.154514f, 0.304904f, 0.703159f, 0.776666f, 0.0964759f, 0.711446f, 0.606188f, 0.305668f, 0.0604435f};
+inline constexpr float FIT_SD[12] = {1.18152f, 0.883029f, 1.16514f, 0.370982f, 0.513387f, 0.660089f, 0.232796f, 0.28675f, 0.251096f, 0.258942f, 0.609684f, 0.147437f};
+inline constexpr float FIT_W[12] = {-0.168161f, -0.743035f, 0.261229f, 0.0907772f, -0.0406176f, -0.168129f, -0.725709f, 0.0527242f, 0.401567f, -0.904956f, 0.11325f, -0.0560074f};
+inline constexpr float FIT_B = -4.26618f;
 // Measured 2026-10-24 (40 maps x 2 sides, vs v28): zgank 51/80 (44), field 338/400 (327), mirror 49/80;
 // STAND_SHOOT alone 311 (mirror 40), CONVERGE alone 330 / zgank 52.
 inline constexpr int SKIRMISH_RANGE = 7;       // champions this close take part in a fight

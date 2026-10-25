@@ -1106,16 +1106,18 @@ bool Bot::converge() {
     const Foe* best = nullptr;
     for (const auto& f : foes) {
         if (cheb(f.pos, pos) > 9) continue;
+        if (Cfg::CONVERGE_FIX && enemy_spawn.is_set(f.pos)) continue;  // unreachable and healed every turn
         bool mate_in = false;
         for (const auto& m : mates) mate_in = mate_in || cheb(m.pos, f.pos) <= 4;
         if (!mate_in || side_power(f.pos, true) > side_power(f.pos, false)) continue;
         if (!best || cheb(f.pos, pos) < cheb(best->pos, pos)) best = &f;
     }
     if (!best) return false;
-    const vec2 at = best->pos;
+    const vec2 at = best->pos, from = pos;
     fight_enemies();
     if (me.can_move()) move_to(square(at, static_cast<int>(me.attack_range())) & ~terrain);
     if (!acted_attack) fight_enemies();
+    if constexpr (Cfg::CONVERGE_ACT_ONLY) return acted_attack || pos != from;  // nothing done: let the turn go on
     return true;
 }
 
@@ -1229,7 +1231,7 @@ bool Bot::fight_enemies(bool kills_only) {
     };
     std::vector<const Foe*> order;
     for (const auto& f : foes)
-        if (!kills_only || f.hp <= burst) order.push_back(&f);
+        if ((!kills_only || f.hp <= burst) && !(Cfg::SPAWN_TARGET_SKIP && enemy_spawn.is_set(f.pos) && f.hp > burst)) order.push_back(&f);
     if (order.empty()) return false;
     std::sort(order.begin(), order.end(), [&](const Foe* a, const Foe* b) { return priority(*a) > priority(*b); });
 
@@ -1291,7 +1293,8 @@ bool Bot::fight_enemies(bool kills_only) {
                 return !e.is_visible() || !e.is_alive();
             });
             order.clear();
-            for (const auto& f : foes) order.push_back(&f);
+            for (const auto& f : foes)
+                if (!(Cfg::SPAWN_TARGET_SKIP && enemy_spawn.is_set(f.pos) && f.hp > burst)) order.push_back(&f);
             std::sort(order.begin(), order.end(), [&](const Foe* a, const Foe* b) { return priority(*a) > priority(*b); });
         }
     }

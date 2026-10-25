@@ -904,6 +904,30 @@ void Bot::assess_threat() {
     int nearest = 99;
     for (const auto& f : foes) nearest = std::min(nearest, cheb(f.pos, pos));
     outmatched = nearest <= Cfg::SKIRMISH_RANGE && side_power(pos, true) > Cfg::OUTMATCHED * side_power(pos, false);
+    if constexpr (Cfg::FIT_FIGHT) {
+        if (nearest <= Cfg::SKIRMISH_RANGE) {
+            float ohp = my_hp, odps = bc::self().strength() + 0.25f * bc::self().focus(), ehp = 0.f, edps = 0.f, emax = 0.f;
+            int on = 1, en = 0, stun = 0, dash = 0, reset = 0, rng = 0;
+            for (const auto& m : mates)
+                if (cheb(m.pos, pos) <= Cfg::SKIRMISH_RANGE) ohp += m.hp, odps += m.power, ++on;
+            for (const auto& f : foes)
+                if (cheb(f.pos, pos) <= Cfg::SKIRMISH_RANGE) {
+                    ehp += f.hp, emax += f.max_hp, edps += f.strength + f.spell / 8.f, ++en;
+                    stun += f.stun, dash += f.dash, reset += f.reset, rng += f.ranged;
+                }
+            auto lg = [](float x) { return std::log(std::max(x, 1e-3f)); };
+            const float x[12] = {lg(ohp / std::max(ehp, 1.f)), lg(odps / std::max(edps, 1.f)), static_cast<float>(on - en),
+                                 static_cast<float>(stun), static_cast<float>(dash), static_cast<float>(reset), my_hp / my_max,
+                                 std::min(burst_here / std::max(my_hp, 1.f), 3.f), emax > 0.f ? ehp / emax : 1.f,
+                                 static_cast<float>(std::min(nearest, 7)) / 7.f, static_cast<float>(rng),
+                                 static_cast<float>(std::min<unsigned>(bc::self().gem_count(), 100u)) / 100.f};
+            float z = Cfg::FIT_B;
+            for (int k = 0; k < 12; ++k) z += Cfg::FIT_W[k] * (x[k] - Cfg::FIT_MU[k]) / Cfg::FIT_SD[k];
+            outmatched = 1.f / (1.f + std::exp(-z)) >= Cfg::FIT_THRESHOLD;
+        } else {
+            outmatched = false;
+        }
+    }
     if (Cfg::FIGHT_SIM_OUTMATCHED && nearest <= Cfg::SKIRMISH_RANGE) {
         const auto f = simulate_fight(pos, Cfg::FIGHT_SIM_ROUNDS, false);
         const float ours = f.ours0 > 0.f ? f.ours_left / f.ours0 : 0.f;
@@ -1082,16 +1106,18 @@ bool Bot::converge() {
     const Foe* best = nullptr;
     for (const auto& f : foes) {
         if (cheb(f.pos, pos) > 9) continue;
+        if (Cfg::CONVERGE_FIX && enemy_spawn.is_set(f.pos)) continue;  // unreachable and healed every turn
         bool mate_in = false;
         for (const auto& m : mates) mate_in = mate_in || cheb(m.pos, f.pos) <= 4;
         if (!mate_in || side_power(f.pos, true) > side_power(f.pos, false)) continue;
         if (!best || cheb(f.pos, pos) < cheb(best->pos, pos)) best = &f;
     }
     if (!best) return false;
-    const vec2 at = best->pos;
+    const vec2 at = best->pos, from = pos;
     fight_enemies();
     if (me.can_move()) move_to(square(at, static_cast<int>(me.attack_range())) & ~terrain);
     if (!acted_attack) fight_enemies();
+    if constexpr (Cfg::CONVERGE_ACT_ONLY) return acted_attack || pos != from;  // nothing done: let the turn go on
     return true;
 }
 
@@ -1205,7 +1231,7 @@ bool Bot::fight_enemies(bool kills_only) {
     };
     std::vector<const Foe*> order;
     for (const auto& f : foes)
-        if (!kills_only || f.hp <= burst) order.push_back(&f);
+        if ((!kills_only || f.hp <= burst) && !(Cfg::SPAWN_TARGET_SKIP && enemy_spawn.is_set(f.pos) && f.hp > burst)) order.push_back(&f);
     if (order.empty()) return false;
     std::sort(order.begin(), order.end(), [&](const Foe* a, const Foe* b) { return priority(*a) > priority(*b); });
 
@@ -1267,7 +1293,8 @@ bool Bot::fight_enemies(bool kills_only) {
                 return !e.is_visible() || !e.is_alive();
             });
             order.clear();
-            for (const auto& f : foes) order.push_back(&f);
+            for (const auto& f : foes)
+                if (!(Cfg::SPAWN_TARGET_SKIP && enemy_spawn.is_set(f.pos) && f.hp > burst)) order.push_back(&f);
             std::sort(order.begin(), order.end(), [&](const Foe* a, const Foe* b) { return priority(*a) > priority(*b); });
         }
     }
@@ -2082,9 +2109,15 @@ void Bot::play_turn() {
         if (Cfg::DEATH_AVOID && !dead_noted) {
             dead_noted = true;
             const int now = static_cast<int>(bc::round_number());
+            int range = Cfg::DEATH_AVOID_RANGE, rounds = Cfg::DEATH_AVOID_ROUNDS;
+            if constexpr (Cfg::DEATH_AVOID_REPEAT) {
+                if (now - last_death_round <= Cfg::DEATH_REPEAT_WINDOW && cheb(pos, last_death_pos) <= Cfg::DEATH_REPEAT_NEAR)
+                    range = Cfg::DEATH_REPEAT_RANGE, rounds = Cfg::DEATH_REPEAT_ROUNDS;  // the same ground killed us again
+                last_death_pos = pos, last_death_round = now;
+            }
             for (auto& g : groups)
-                if (cheb(g.tiles.front(), pos) <= Cfg::DEATH_AVOID_RANGE)
-                    g.skip_until = std::max(g.skip_until, now + Cfg::DEATH_AVOID_ROUNDS);
+                if (cheb(g.tiles.front(), pos) <= range)
+                    g.skip_until = std::max(g.skip_until, now + rounds);
         }
         g_stage = "dead";
         if (Cfg::DEAD_CLEARS_CLAIM) write_claim(-1);  // allies must not count a dead body in a squad

@@ -536,7 +536,7 @@ int Bot::required_helpers(const Group& g) const {
         const int cap = Cfg::MONOLITH_WHEN_DOMINANT && mono_dominant ? bodies - 1 : Cfg::MONOLITH_MAX_NEED;
         return h < bodies && h <= cap ? h : -1;
     }
-    const float solo = g.strength * taken * (g.camp_count > 1 ? 0.65f : 1.f) * hp / my_dps(g);
+    const float solo = g.strength * taken * (g.camp_count > 1 ? Cfg::MULTI_CAMP_TAKEN : 1.f) * hp / my_dps(g);
     int best = -1;
     const float allowance = my_hp - Cfg::FIGHT_HP_MARGIN * my_max;
     if (allowance > 0.f) {
@@ -856,6 +856,8 @@ void Bot::assess_threat() {
             else if (ab.is_dash()) f.dash = true;
             if (ab.is_cc()) f.stun = true;
             if (ab.is_damage() || ab.is_aoe_damage()) f.spell = std::max(f.spell, ab.damage_amount());
+            if constexpr (Cfg::CC_THREAT)
+                if (ab.is_cc()) try { f.spell = std::max(f.spell, ab.damage_amount()); } catch (...) {}
         }
         foes.push_back(f);
     }
@@ -1233,6 +1235,25 @@ bool Bot::fight_enemies(bool kills_only) {
     if (order.empty()) return false;
     std::sort(order.begin(), order.end(), [&](const Foe* a, const Foe* b) { return priority(*a) > priority(*b); });
 
+    if constexpr (Cfg::CAST_FIRST) {
+        // A walking-exclusive spell is lost once we step this turn: cast it first at the best target in range.
+        if (me.can_cast() && me.can_move())
+            for (const auto& ab : me.abilities()) {
+                if (!ab.is_ready() || !(ab.is_damage() || ab.is_aoe_damage() || ab.is_cc()) || !ab.info()) continue;
+                const bool exclusive = std::visit([](const auto& x) { return x.exclusive_with_movement; }, *ab.info());
+                if (!exclusive || !ab.can_target_enemies()) continue;
+                const auto tiles = ab.valid_tiles();
+                for (const auto* f : order) {
+                    const auto& e = enemies[static_cast<std::size_t>(f->index)];
+                    if (!tiles.is_set(f->pos)) continue;
+                    try {
+                        if (ab.use(e)) break;
+                    } catch (...) {
+                    }
+                }
+                break;
+            }
+    }
     // Melee: close in on a target we can finish this turn when it is safe to.
     if (!ranged && me.can_move() && me.can_attack() && !outmatched) {
         const auto reach = me.attack_tiles();
@@ -1661,6 +1682,18 @@ bool Bot::attack_camp(int gid) {
             try {  // a camp killed this turn can leave a handle that no longer reads
                 if (c.is_dead() || !reach.is_set(c.position())) continue;
                 if (group_of(c.spawn_position()) != gid && !c.is_awake()) continue;  // never wake a new group
+                if constexpr (Cfg::VARG_SPLASH) {
+                    if (kind == bc::champion_type::varg) {  // splash hits everything within 1 of the target
+                        auto around = [&](const bc::camp& x) {
+                            int n = 0;
+                            for (const auto& o : camps)
+                                if (&o != &x && !o.is_dead() && cheb(o.position(), x.position()) <= 1) ++n;
+                            return n;
+                        };
+                        if (!pick || around(c) > around(*pick) || (around(c) == around(*pick) && c.health() < pick->health())) pick = &c;
+                        continue;
+                    }
+                }
                 if (!pick || c.health() < pick->health()) pick = &c;
             } catch (...) {
             }

@@ -657,3 +657,74 @@ Standoff follow-up (same day): my first diagnosis was wrong - v31's escape() has
 the low-HP retreat does, and the champions were at full HP). The freeze cause is still unknown; the speculative
 SPAWN_STANDOFF patch was discarded untested and kessoku.zip stays v31. Next: reproduce on 00reverse_spiral with a
 trace of g_stage per turn for a champion standing on the spawn.
+
+### 2026-10-25: user's 7 bugs + 7 ideas checked (code, SDK, rules, probe, ladder)
+
+Probe (v31 copy printing ability flags and failed casts, 6 games vs zgank):
+- Ren's, Tavi's and Prism's damage-and-stun spells are is_cc() only (not is_damage), so assess_threat never adds
+  their damage (Ren 75-82, Tavi 154) to f.spell; damage_amount() returns it for any kind (also Heart's dash 150-200).
+- Failed casts all came after moving in the same turn ("Excludes walking": Tavi slot 1, Stellar both slots, also
+  Prism/Ren/Marcella/Ryth/Cassi): Stellar 47, Tavi 25 over 6 games (~12 lost spells a game).
+Rules: Varg's basic attacks splash Strength onto everything within 1 of the target; Vendetta's kills (camps too)
+reset her cooldowns; tributing a locked altar auto-attacks the lock; placing a lock cancels enemy channels; any
+spawn tile heals to full at turn end; shared memory is 8 bytes.
+Ladder v28 (1220 games): fuel-outs 10.5/game, almost all after round 100 (rounds 0-5: 0.7/game); 00lanes 101.6/game,
+01big_world 81.5, 01yellow_brick_road 33.5, 01elk_arena 29.7, 01boss_battle 27.9. Our deaths: 6.8% standing in a
+bush, 30% within 1 tile of one.
+Verdicts: true and cheap to test - CC spell damage in threat, cast exclusive spells before moving in fights, Varg
+splash targeting, multi-camp factor 0.75 vs 0.65; worth a test - escape into bushes; already in v31 - emergency
+lock (try_lock_altar), dash fields; false or measured - ability_dash fields (exist), lock-attack turn waste
+(identical cost), dead claims (DEAD_CLEARS_CLAIM measured worse), set_priority (C8 neutral), altar ward (neutral),
+Tavi sell/rebuy heal (spawn already heals to full), draft precompute for turn 1 (early fuel-outs negligible).
+Biggest new lead: fuel exhaustion on lanes / big_world.
+
+### 2026-10-25: fuel profile + the four cheap fixes, nothing ships (zip stays v31)
+
+Fuel profile (tools/fuel_profile harness on v31 vs zgank/zmeta): fuel-outs 78-186 a game on 00lanes/01big_world
+(ladder: 102/82). Per turn observe() costs ~13-16K; the overruns come from spikes in choose_target (to 57-83K),
+farm (75-83K), move_to (45-60K), bank (to 61K). The existing exact-optimisation switches halve fuel-outs on the
+6 worst fuel maps (FUEL_GUARD: lanes 119 -> 61, big_world 76 -> 45; with OBS_SKIP_FAR + BANK_CACHE + MOVE_SCRATCH:
+46 / 57) but win slightly less vs zgank/zmeta/zpoke (24 and 23 vs 27 of 36): a fuel-out only delays the turn's
+decision (the engine resumes it), while skipping a re-score makes a worse one. Fuel is not why lanes is lost.
+Cheap fixes (bots/v34, switches OFF = v31), tools/sprt.py vs v31: CC_THREAT 27-35 (reject: more threat = more
+retreat); CAST_FIRST 52-50; VARG_SPLASH 59-57; MULTI_CAMP_TAKEN 0.75 60-57; the last three together 41-48 on PvP
+maps (reject), 57-57 on camp maps, mirror 21/40 -> individual gains were noise.
+
+### 2026-10-25: 00reverse_spiral standoff traced and fixed -> v35
+
+Reproduced in the v31 mirror; per-turn trace of champions on the spawn (stage, can_move, attacked):
+1. converge() picked enemies standing on their own (adjacent) spawn - unreachable, healed to full every turn - and
+   returned "done" although it could not act, ending the turn;
+2. with that fixed, ranged champions (Tavi, Willow) shot those spawn-sitters every turn; ranged champions share one
+   allowance for moving and attacking, so can_move() was false and move_to() failed every turn.
+v35 = v31 + CONVERGE_FIX (converge ignores enemies on their spawn) + SPAWN_TARGET_SKIP (fights ignore enemies on their
+spawn unless killable this turn). Each alone keeps the standoff. CONVERGE_ACT_ONLY (end converge's turn only if it
+acted) fixed it too but cost 113-122 elsewhere, so it is OFF. Results: reverse_spiral games all real again; vs v31 on
+all 40 maps x zgank/zmeta/zpoke/zdive0 243-243 (+5 -5); mirror 43/80. kessoku.zip = v35.
+
+### 2026-10-25: why 00lanes is lost (v28 ladder: 4/36)
+
+Map: 90x30, three horizontal lanes (y~4, 13, 25) split by bush walls; spawns at the far ends of the middle lane;
+altars along every lane near both ends; every camp in the centre (x 35-54). The bottom lane is the gem lane (11-gem
+cluster+wolf groups and a 22-gem elk herd); the top lane's centre groups are 0-gem, 40-gold clusters.
+36 ladder games: collected 157-141 at r300 (ahead), 328-368 at r600, 748-1062 final; our deaths 17.8 vs 3.1 a game,
+15.4 of them in the bottom lane, mostly at x 30-39 (the approach to and the camps on our side); none to camps.
+Not fuel: only 6% of those deaths follow a fuel-out of the victim within 3 rounds (fuel-outs ~100/game there).
+Not bush ambushes: 5% of bottom-lane deaths have an enemy within 6 in a bush; 8% are next to an altar; 20% carry 10+.
+Repeats: 21% die within 8 tiles of their own previous bottom-lane death, median gap 167 rounds (DEATH_AVOID lasts
+150). DEATH_AVOID_REPEAT (avoid range 8 for 400 rounds after a repeat death; dev bots/v36, OFF) was neutral locally
+(244-243 over 320 games, deaths 8.2 -> 7.9) and did not help the one local game with the pattern -> not shipped.
+Cause (10 replays, champions on the lanes every 50 rounds, r300-1100): enemies stack the gem lane, 3.38 bodies vs
+our 2.37; we have fewer there in 63% of samples (more in 21%); we keep ~0.62 bodies in the gold-only top lane
+(they 0.15) and have ~1 fewer body on the lanes overall (more of ours dead or at spawn). group_score values a group
+at gems + 0.12 x gold (CLUSTER_VALUE 1.0), so a 0-gem, 40-gold, 240-HP cluster is worth 4.8 for a near-instant kill.
+Next experiment: concentrate on contested gem groups (lower value for 0-gem groups while enemies hold a gem lane,
+or a CONVERGE-style pull to the lane where enemies are seen); local bots do not stack lanes, so it needs a stacking
+adversary or a ladder trial.
+Lanes follow-up (same day): bots/zstack (zgank valuing only gem groups) reproduces the lanes losses - v35 loses
+00lanes from both sides (16 and 19 bottom-lane deaths); zgank only from side B. But zstack does not outnumber us much
+in the gem lane locally (2.6 vs our 2.3-2.8 bodies; fewer in 4 and 8 of 17 samples) and still wins those fights.
+ZERO_GEM_DISCOUNT (0-gem groups x0.3 while an enemy was seen in the last 100 rounds) vs v35 on all 40 maps x
+zstack/zgank/zmeta/zpoke: 143-150 (+5 -12), SPRT reject; on lanes still lost to zstack-A (11 bottom deaths, was 16)
+and zgank-B (21, was 15). Conclusion: lanes is lost on fight quality in the gem lane, the same root as the other
+ladder losses, not on lane allocation. Not shipped; zip stays v35. zstack kept as an adversary for lanes.

@@ -137,25 +137,6 @@ inline constexpr float SQUAD_HEAL_FIRST = 0.75f;  // heal at spawn before waitin
 inline constexpr float LETHAL_MARGIN = 1.15f;  // retreat when visible burst * this reaches our HP
 inline constexpr float DANGER_TILE = 0.60f;    // avoid tiles whose burst exceeds this share of HP
 inline constexpr float OUTMATCHED = 1.25f;     // enemy fight power over ours that counts as losing
-// Ladder replays (2026-10-24): 97% of our deaths are untraded; victims flee and are run down
-// (ranged champions cannot move and shoot in one turn), while allies within 8 tiles keep farming.
-// STAND_SHOOT: when the chaser reaches us next turn whatever we do, fight back instead of fleeing.
-// CONVERGE: join a skirmish a teammate is in when our side holds the fight power there.
-inline constexpr bool STAND_SHOOT = false;  // v30: off. Ladder v29 (95 games) 45% vs ~52% expected, deaths/loss 18.5 vs 16.4
-inline constexpr bool CONVERGE = true;
-// Plan_v29 R2 FIT_FIGHT: "outmatched" = P(we die within 8 rounds) >= FIT_THRESHOLD, from a logistic model fitted
-// to 223K skirmish rows of v30 vs zgank/zdive0/zpoke (40 maps x 2 sides). Test AUC 0.889 vs 0.705 for the
-// OUTMATCHED power-ratio flag; at the flag's firing rate the death rate when it does not fire halves (1.7% -> 0.8%).
-// Features (standardised): log hp ratio, log dps ratio, bodies diff, enemy stuns / dashes / resets ready, our
-// hp share, burst/our hp (cap 3), enemy hp share, nearest/7, enemy ranged, bag/100.
-inline constexpr bool FIT_FIGHT = false;
-inline constexpr float FIT_THRESHOLD = 0.043f;
-inline constexpr float FIT_MU[12] = {0.513183f, 0.517883f, 0.5948f, 0.154514f, 0.304904f, 0.703159f, 0.776666f, 0.0964759f, 0.711446f, 0.606188f, 0.305668f, 0.0604435f};
-inline constexpr float FIT_SD[12] = {1.18152f, 0.883029f, 1.16514f, 0.370982f, 0.513387f, 0.660089f, 0.232796f, 0.28675f, 0.251096f, 0.258942f, 0.609684f, 0.147437f};
-inline constexpr float FIT_W[12] = {-0.168161f, -0.743035f, 0.261229f, 0.0907772f, -0.0406176f, -0.168129f, -0.725709f, 0.0527242f, 0.401567f, -0.904956f, 0.11325f, -0.0560074f};
-inline constexpr float FIT_B = -4.26618f;
-// Measured 2026-10-24 (40 maps x 2 sides, vs v28): zgank 51/80 (44), field 338/400 (327), mirror 49/80;
-// STAND_SHOOT alone 311 (mirror 40), CONVERGE alone 330 / zgank 52.
 inline constexpr int SKIRMISH_RANGE = 7;       // champions this close take part in a fight
 inline constexpr int LOSING_RANGE = 4;         // outmatched with an enemy this close: disengage (5: 18/42, 6: 15/42 vs v17)
 // Feeding fixes (v18), measured vs v17 on 21 maps: safe recall 22/42 (deaths 326 -> 285);

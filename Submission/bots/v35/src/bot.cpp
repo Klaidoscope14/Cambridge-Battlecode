@@ -11,7 +11,6 @@
 #include <cmath>
 #include <iostream>
 #include <span>
-#include <functional>
 #include <variant>
 
 namespace {
@@ -388,20 +387,7 @@ bool Bot::move_to(bitboard goals, bool allow_dash) {
     auto here_d = UNREACH;
     // Route around tiles inside enemy burst range when a safe path exists.
     ensure_danger();
-    if constexpr (Cfg::ISO_PATH) {
-        bool threat = false;
-        for (const auto& f : foes) threat = threat || cheb(f.pos, pos) <= Cfg::ISO_THREAT_RANGE;
-        for (const auto& g : ghosts) threat = threat || (g.seen != round && cheb(g.pos, pos) <= Cfg::ISO_THREAT_RANGE + g.slack);
-        if (threat && !mates.empty()) {
-            bitboard near_ally;
-            for (const auto& m : mates) near_ally |= square(m.pos, Cfg::ISO_RANGE);
-            const bitboard lonely = ~near_ally;
-            bitboard visited;
-            field.compute_to(blocked | ((danger | lonely) & ~goals), goals, origin, visited);
-            here_d = field.get(pos);
-        }
-    }
-    if (here_d == UNREACH && !danger.is_empty()) {
+    if (!danger.is_empty()) {
         bitboard visited;
         field.compute_to(blocked | (danger & ~goals), goals, origin, visited);
         here_d = field.get(pos);
@@ -712,27 +698,17 @@ int Bot::choose_target() {
     };
     int best = -1, best_req = 0, current_req = 0;
     float best_s = 0.f, current = -1.f;
-    struct Cand { int id, req; float s, v, t; int dist = 0; };
+    struct Cand { int id, req; float s, v, t; };
     std::vector<Cand> cands;
     for (std::size_t i = 0; i < groups.size(); ++i) {
         const int dist = dist_to(groups[i]);
         if (dist >= UNREACH) continue;
         int req = 0;
         float v = 0.f, t = 0.f;
-        float s = group_score(static_cast<int>(i), dist, &req, &v, &t);
-        if constexpr (Cfg::ISO_TARGET) {
-            if (s > 0.f) {
-                const vec2 at = groups[i].tiles.front();
-                bool enemy = false, ally = false;
-                for (const auto& f : foes) enemy = enemy || cheb(f.pos, at) <= Cfg::ISO_THREAT_RANGE;
-                for (const auto& g : ghosts) enemy = enemy || cheb(g.pos, at) <= Cfg::ISO_THREAT_RANGE + g.slack;
-                for (const auto& m : mates) ally = ally || cheb(m.pos, at) <= Cfg::ISO_TARGET_ALLY;
-                if (enemy && !ally) s *= Cfg::ISO_TARGET_MULT;  // a lone farmer there is a pick-off
-            }
-        }
+        const float s = group_score(static_cast<int>(i), dist, &req, &v, &t);
         if (static_cast<int>(i) == target) current = s, current_req = req;
         if (s > best_s) best_s = s, best = static_cast<int>(i), best_req = req;
-        if (s > 0.f) cands.push_back({static_cast<int>(i), req, s, v, t, dist});
+        if (s > 0.f) cands.push_back({static_cast<int>(i), req, s, v, t});
     }
     // Tour planner (algorithm review item 3): look three legs ahead over the best groups,
     // with exact group-to-group distances and respawn windows, and take the first leg of
@@ -795,51 +771,6 @@ int Bot::choose_target() {
         }
     }
 #endif
-    if constexpr (Cfg::R3_ASSIGN) {
-        // Score every (body, group) pair for us and the allies we see; take the best total assignment.
-        if (!mates.empty() && cands.size() > 1) {
-            std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) { return a.s > b.s; });
-            if (cands.size() > static_cast<std::size_t>(Cfg::R3_CANDIDATES)) cands.resize(static_cast<std::size_t>(Cfg::R3_CANDIDATES));
-            std::vector<const Mate*> near;  // us + the 3 nearest allies: at most 9^4 assignments
-            for (const auto& m : mates) near.push_back(&m);
-            std::sort(near.begin(), near.end(), [&](const Mate* x, const Mate* y) { return cheb(x->pos, pos) < cheb(y->pos, pos); });
-            if (near.size() > 3) near.resize(3);
-            const std::size_t na = near.size() + 1, nc = cands.size();
-            std::vector<float> sc(na * nc, 0.f);
-            for (std::size_t c = 0; c < nc; ++c) {
-                sc[c] = cands[c].s;  // row 0 = us
-                const auto gi = static_cast<std::size_t>(cands[c].id);
-                for (std::size_t a = 1; a < na; ++a) {
-                    const vec2 mp = near[a - 1]->pos;
-                    const int d = gi < gfield_ok.size() && gfield_ok[gi] ? static_cast<int>(gfield[gi].get(mp)) : cheb(mp, groups[gi].tiles.front());
-                    if (d >= UNREACH) continue;
-                    // Same value, our time with their walk instead of ours (no second scoring pass: fuel).
-                    const float t = std::max(1.f, cands[c].t + static_cast<float>(d - cands[c].dist));
-                    sc[a * nc + c] = cands[c].v / t;
-                }
-            }
-            // Greedy max-weight matching: repeatedly take the best remaining (body, group) pair.
-            std::vector<int> cap(nc), best_pick(na, -1);
-            for (std::size_t c = 0; c < nc; ++c) cap[c] = cands[c].req + 1;
-            for (std::size_t round_ = 0; round_ < na; ++round_) {
-                float bs = 0.f;
-                std::size_t ba = na, bc_ = nc;
-                for (std::size_t a = 0; a < na; ++a) {
-                    if (best_pick[a] >= 0) continue;
-                    for (std::size_t c = 0; c < nc; ++c)
-                        if (cap[c] > 0 && sc[a * nc + c] > bs) bs = sc[a * nc + c], ba = a, bc_ = c;
-                }
-                if (ba == na) break;
-                best_pick[ba] = static_cast<int>(bc_);
-                --cap[bc_];
-                if (ba == 0) break;  // our own task is settled
-            }
-            if (best_pick[0] >= 0) {
-                const auto& c = cands[static_cast<std::size_t>(best_pick[0])];
-                best = c.id, best_s = c.s, best_req = c.req;
-            }
-        }
-    }
     if (target >= 0 && current > 0.f && best_s < current * Cfg::SWITCH_MARGIN) best = target, best_req = current_req;
 
     // Squad deadlock breaker: after waiting a while, join whichever squad target
@@ -973,6 +904,30 @@ void Bot::assess_threat() {
     int nearest = 99;
     for (const auto& f : foes) nearest = std::min(nearest, cheb(f.pos, pos));
     outmatched = nearest <= Cfg::SKIRMISH_RANGE && side_power(pos, true) > Cfg::OUTMATCHED * side_power(pos, false);
+    if constexpr (Cfg::FIT_FIGHT) {
+        if (nearest <= Cfg::SKIRMISH_RANGE) {
+            float ohp = my_hp, odps = bc::self().strength() + 0.25f * bc::self().focus(), ehp = 0.f, edps = 0.f, emax = 0.f;
+            int on = 1, en = 0, stun = 0, dash = 0, reset = 0, rng = 0;
+            for (const auto& m : mates)
+                if (cheb(m.pos, pos) <= Cfg::SKIRMISH_RANGE) ohp += m.hp, odps += m.power, ++on;
+            for (const auto& f : foes)
+                if (cheb(f.pos, pos) <= Cfg::SKIRMISH_RANGE) {
+                    ehp += f.hp, emax += f.max_hp, edps += f.strength + f.spell / 8.f, ++en;
+                    stun += f.stun, dash += f.dash, reset += f.reset, rng += f.ranged;
+                }
+            auto lg = [](float x) { return std::log(std::max(x, 1e-3f)); };
+            const float x[12] = {lg(ohp / std::max(ehp, 1.f)), lg(odps / std::max(edps, 1.f)), static_cast<float>(on - en),
+                                 static_cast<float>(stun), static_cast<float>(dash), static_cast<float>(reset), my_hp / my_max,
+                                 std::min(burst_here / std::max(my_hp, 1.f), 3.f), emax > 0.f ? ehp / emax : 1.f,
+                                 static_cast<float>(std::min(nearest, 7)) / 7.f, static_cast<float>(rng),
+                                 static_cast<float>(std::min<unsigned>(bc::self().gem_count(), 100u)) / 100.f};
+            float z = Cfg::FIT_B;
+            for (int k = 0; k < 12; ++k) z += Cfg::FIT_W[k] * (x[k] - Cfg::FIT_MU[k]) / Cfg::FIT_SD[k];
+            outmatched = 1.f / (1.f + std::exp(-z)) >= Cfg::FIT_THRESHOLD;
+        } else {
+            outmatched = false;
+        }
+    }
     if (Cfg::FIGHT_SIM_OUTMATCHED && nearest <= Cfg::SKIRMISH_RANGE) {
         const auto f = simulate_fight(pos, Cfg::FIGHT_SIM_ROUNDS, false);
         const float ours = f.ours0 > 0.f ? f.ours_left / f.ours0 : 0.f;
@@ -1151,16 +1106,18 @@ bool Bot::converge() {
     const Foe* best = nullptr;
     for (const auto& f : foes) {
         if (cheb(f.pos, pos) > 9) continue;
+        if (Cfg::CONVERGE_FIX && enemy_spawn.is_set(f.pos)) continue;  // unreachable and healed every turn
         bool mate_in = false;
         for (const auto& m : mates) mate_in = mate_in || cheb(m.pos, f.pos) <= 4;
         if (!mate_in || side_power(f.pos, true) > side_power(f.pos, false)) continue;
         if (!best || cheb(f.pos, pos) < cheb(best->pos, pos)) best = &f;
     }
     if (!best) return false;
-    const vec2 at = best->pos;
+    const vec2 at = best->pos, from = pos;
     fight_enemies();
     if (me.can_move()) move_to(square(at, static_cast<int>(me.attack_range())) & ~terrain);
     if (!acted_attack) fight_enemies();
+    if constexpr (Cfg::CONVERGE_ACT_ONLY) return acted_attack || pos != from;  // nothing done: let the turn go on
     return true;
 }
 
@@ -1274,7 +1231,7 @@ bool Bot::fight_enemies(bool kills_only) {
     };
     std::vector<const Foe*> order;
     for (const auto& f : foes)
-        if (!kills_only || f.hp <= burst) order.push_back(&f);
+        if ((!kills_only || f.hp <= burst) && !(Cfg::SPAWN_TARGET_SKIP && enemy_spawn.is_set(f.pos) && f.hp > burst)) order.push_back(&f);
     if (order.empty()) return false;
     std::sort(order.begin(), order.end(), [&](const Foe* a, const Foe* b) { return priority(*a) > priority(*b); });
 
@@ -1336,7 +1293,8 @@ bool Bot::fight_enemies(bool kills_only) {
                 return !e.is_visible() || !e.is_alive();
             });
             order.clear();
-            for (const auto& f : foes) order.push_back(&f);
+            for (const auto& f : foes)
+                if (!(Cfg::SPAWN_TARGET_SKIP && enemy_spawn.is_set(f.pos) && f.hp > burst)) order.push_back(&f);
             std::sort(order.begin(), order.end(), [&](const Foe* a, const Foe* b) { return priority(*a) > priority(*b); });
         }
     }

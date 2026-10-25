@@ -205,4 +205,6 @@ public:
     void play_turn();
     float prev_hp = 1e9f;  // our health at the end of our last turn
     bool dead_noted = false;  // this death already marked the groups around it
+    vec2 last_death_pos{-100, -100};
+    int last_death_round = -10000;
 };
