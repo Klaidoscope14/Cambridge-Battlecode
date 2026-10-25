@@ -1,4 +1,4 @@
-"""R2 data: skirmish rows from a logging bot (v30 + an "FL ..." line per skirmish round, see MetaResearch 2026-10-25)
+"""R2 data: skirmish rows from a logging bot (v30 + an "FL ..." line per skirmish round, see Research.md, section 6: FIT_FIGHT)
 played with `cambc run-batch --log-limit 30000000` into DIR/g/*.repl26a + *.json; labels = died within 8 rounds.
 usage: copy into DIR (the scratchpad r2 folder) and run there; writes DIR/data.json."""
 import json, glob, os, zipfile, math, re

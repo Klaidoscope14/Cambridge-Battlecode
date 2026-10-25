@@ -133,6 +133,18 @@ inline constexpr int SQUAD_WAIT_RING = 5;         // wait this far from monsters
 inline constexpr int SQUAD_REGROUP_TURNS = 12;    // then move to the best-supported squad target
 inline constexpr int SQUAD_GIVE_UP_TURNS = 40;    // then abandon the target for a while
 inline constexpr float SQUAD_HEAL_FIRST = 0.75f;  // heal at spawn before waiting below this HP
+// Ladder 2026-10-25: in rounds 1-400 our bodies stand by unstarted camps 12.3% of the time (top 5: 6-7%).
+// LESS_WAIT: shorter regroup/give-up clocks, and squad targets pay LW_TIME_PENALTY rounds per missing helper.
+inline constexpr bool LESS_WAIT = true;
+inline constexpr int LW_REGROUP_TURNS = 4;
+inline constexpr int LW_GIVE_UP_TURNS = 12;
+inline constexpr int LW_TIME_PENALTY = 10;
+inline constexpr int regroup_turns() { return LESS_WAIT ? LW_REGROUP_TURNS : SQUAD_REGROUP_TURNS; }
+inline constexpr int give_up_turns() { return LESS_WAIT ? LW_GIVE_UP_TURNS : SQUAD_GIVE_UP_TURNS; }
+// Top-5 builds: Treasure first on every champion, then Jungle, then stacked Bruiser (5 + 1 + 1 shards of
+// stats per 150 gold vs Power's 6).
+inline constexpr bool TREASURE_FIRST = true;
+inline constexpr bool BRUISER_ITEMS = true;
 // Enemy threat.
 inline constexpr float LETHAL_MARGIN = 1.15f;  // retreat when visible burst * this reaches our HP
 inline constexpr float DANGER_TILE = 0.60f;    // avoid tiles whose burst exceeds this share of HP

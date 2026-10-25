@@ -1,6 +1,6 @@
 # How to submit (CAMBC 2026)
 
-`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v35 = v31 + the reverse_spiral standoff fix, also frozen as `bots/v35`; `bots/v31` and `bots/v28` are rollbacks).
+`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v36all = v35 + LESS_WAIT, TREASURE_FIRST and BRUISER_ITEMS, also frozen as `bots/v36all`; `bots/v36` is the same source with the three switches off (= v35); `bots/v35`, `bots/v31` and `bots/v28` are rollbacks).
 Ladder team: **HighCortisol** (team id `58271d23-d86a-48de-987a-5d82c983d7db`).
 
 ## Where the submission zip lives
@@ -49,8 +49,8 @@ cambc matches summary <match id> --json    # saves match-<id>.json into the CURR
 ```
 In summaries, a death's killer often appears as `Unknown entity kind (1)` with the enemy
 champion's roster id: those are champion kills. Full replay state (positions, health, gems at
-any step) can be read in Node with the visualiser's engine wasm; see MetaResearch_v25.md
-("ladder loss replays read death by death").
+any step) can be read in Node with the visualiser's engine wasm; see `../Research.md` (section 2).
+
 
 Version comparison on the ladder (win rate vs the earlier version on the same map mix, deaths per
 loss/win, traded deaths, deaths on our half, capture theft):

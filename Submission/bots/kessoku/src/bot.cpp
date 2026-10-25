@@ -316,7 +316,16 @@ std::optional<bc::item_type> Bot::next_item() const {
         || kind == bc::champion_type::cassi;
     struct Step { I shard, emblem; };
     std::vector<Step> plan;
-    if (kind == bc::champion_type::vesper_vale)
+    const bool melee = kind == bc::champion_type::varg || kind == bc::champion_type::vendetta || kind == bc::champion_type::ryth
+        || kind == bc::champion_type::issac || kind == bc::champion_type::marcella || kind == bc::champion_type::heart_of_ruin
+        || kind == bc::champion_type::ren;
+    if (Cfg::TREASURE_FIRST) {
+        if (focus) plan.push_back({I::treasure_shard_of_focus, I::treasure_emblem_of_focus});
+        else if (melee) plan.push_back({I::treasure_shard_of_health, I::treasure_emblem_of_health});
+        else plan.push_back({I::treasure_shard_of_strength, I::treasure_emblem_of_strength});
+        if (kind != bc::champion_type::ryth)  // Ryth's Jungle comes from RYTH_BUILD
+            plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
+    } else if (kind == bc::champion_type::vesper_vale)
         plan.push_back({I::treasure_shard_of_strength, I::treasure_emblem_of_strength});
     if (kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 1)
         plan.push_back({I::durability_shard_of_health, I::durability_emblem_of_health});
@@ -324,7 +333,7 @@ std::optional<bc::item_type> Bot::next_item() const {
         plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
     if (focus) plan.push_back({I::monster_shard_of_focus, I::monster_emblem_of_focus});
     else plan.push_back({I::monster_shard_of_strength, I::monster_emblem_of_strength});
-    if (!(kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 2))
+    if (!Cfg::TREASURE_FIRST && !(kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 2))
         plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
     // Tavi shops anywhere, so he rarely recalls: Home is wasted on him.
     if (Cfg::HOME_SLOT >= 0 && kind != bc::champion_type::tavi) {
@@ -334,6 +343,14 @@ std::optional<bc::item_type> Bot::next_item() const {
     const auto owned = bc::self().item_count();
     for (const auto& s : plan)
         if (owned[s.emblem] == 0) return s.shard;
+    if (Cfg::BRUISER_ITEMS) {
+        // Each Bruiser emblem is 5 of its stat plus 1 of each other; balance by the chosen stat.
+        const int atk = static_cast<int>(owned[I::bruiser_emblem_of_strength] + owned[I::bruiser_emblem_of_focus]) * 5
+            + static_cast<int>(owned[I::bruiser_shard_of_strength] + owned[I::bruiser_shard_of_focus]);
+        const int hp_sh = static_cast<int>(owned[I::bruiser_emblem_of_health]) * 5 + static_cast<int>(owned[I::bruiser_shard_of_health]);
+        if (Cfg::HEALTH_PCT > 0 && hp_sh * 100 < Cfg::HEALTH_PCT * atk + 50) return I::bruiser_shard_of_health;
+        return focus ? I::bruiser_shard_of_focus : I::bruiser_shard_of_strength;
+    }
     if (Cfg::HEALTH_PCT > 0) {
         const int atk = static_cast<int>(owned[I::power_emblem_of_strength] + owned[I::power_emblem_of_focus]) * 6
             + static_cast<int>(owned[I::power_shard_of_strength] + owned[I::power_shard_of_focus]);
@@ -590,7 +607,8 @@ float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* 
             value *= Cfg::ENEMY_NEAR_PENALTY;
             break;
         }
-    const float time = dist + kill + bc::constants::capture_time + std::max(0, g.respawn_at - round - dist);
+    float time = dist + kill + bc::constants::capture_time + std::max(0, g.respawn_at - round - dist);
+    if (Cfg::LESS_WAIT && req > 0) time += Cfg::LW_TIME_PENALTY * std::max(0, req - allies_near(g));
     if (value_out) *value_out = value;
     if (time_out) *time_out = time;
     return value / (time + 4.f);
@@ -775,7 +793,7 @@ int Bot::choose_target() {
 
     // Squad deadlock breaker: after waiting a while, join whichever squad target
     // has the most committed allies; after waiting too long, give up on it.
-    if (best >= 0 && best == target && best_req > 0 && wait_turns > Cfg::SQUAD_REGROUP_TURNS) {
+    if (best >= 0 && best == target && best_req > 0 && wait_turns > Cfg::regroup_turns()) {
         int join = -1, join_claims = claims_on(best), join_req = 0;
         for (std::size_t i = 0; i < groups.size(); ++i) {
             const int id = static_cast<int>(i);
@@ -789,7 +807,7 @@ int Bot::choose_target() {
         }
         if (join >= 0) {
             best = join, best_req = join_req, wait_turns = 0;
-        } else if (wait_turns > Cfg::SQUAD_GIVE_UP_TURNS) {
+        } else if (wait_turns > Cfg::give_up_turns()) {
             groups[static_cast<std::size_t>(best)].skip_until = round + 40;
             best = -1, best_req = 0, wait_turns = 0;
         }
