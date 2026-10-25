@@ -904,6 +904,30 @@ void Bot::assess_threat() {
     int nearest = 99;
     for (const auto& f : foes) nearest = std::min(nearest, cheb(f.pos, pos));
     outmatched = nearest <= Cfg::SKIRMISH_RANGE && side_power(pos, true) > Cfg::OUTMATCHED * side_power(pos, false);
+    if constexpr (Cfg::FIT_FIGHT) {
+        if (nearest <= Cfg::SKIRMISH_RANGE) {
+            float ohp = my_hp, odps = bc::self().strength() + 0.25f * bc::self().focus(), ehp = 0.f, edps = 0.f, emax = 0.f;
+            int on = 1, en = 0, stun = 0, dash = 0, reset = 0, rng = 0;
+            for (const auto& m : mates)
+                if (cheb(m.pos, pos) <= Cfg::SKIRMISH_RANGE) ohp += m.hp, odps += m.power, ++on;
+            for (const auto& f : foes)
+                if (cheb(f.pos, pos) <= Cfg::SKIRMISH_RANGE) {
+                    ehp += f.hp, emax += f.max_hp, edps += f.strength + f.spell / 8.f, ++en;
+                    stun += f.stun, dash += f.dash, reset += f.reset, rng += f.ranged;
+                }
+            auto lg = [](float x) { return std::log(std::max(x, 1e-3f)); };
+            const float x[12] = {lg(ohp / std::max(ehp, 1.f)), lg(odps / std::max(edps, 1.f)), static_cast<float>(on - en),
+                                 static_cast<float>(stun), static_cast<float>(dash), static_cast<float>(reset), my_hp / my_max,
+                                 std::min(burst_here / std::max(my_hp, 1.f), 3.f), emax > 0.f ? ehp / emax : 1.f,
+                                 static_cast<float>(std::min(nearest, 7)) / 7.f, static_cast<float>(rng),
+                                 static_cast<float>(std::min<unsigned>(bc::self().gem_count(), 100u)) / 100.f};
+            float z = Cfg::FIT_B;
+            for (int k = 0; k < 12; ++k) z += Cfg::FIT_W[k] * (x[k] - Cfg::FIT_MU[k]) / Cfg::FIT_SD[k];
+            outmatched = 1.f / (1.f + std::exp(-z)) >= Cfg::FIT_THRESHOLD;
+        } else {
+            outmatched = false;
+        }
+    }
     if (Cfg::FIGHT_SIM_OUTMATCHED && nearest <= Cfg::SKIRMISH_RANGE) {
         const auto f = simulate_fight(pos, Cfg::FIGHT_SIM_ROUNDS, false);
         const float ours = f.ours0 > 0.f ? f.ours_left / f.ours0 : 0.f;

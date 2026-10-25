@@ -565,12 +565,6 @@ int Bot::allies_near(const Group& g) const {
 float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* time_out) const {
     const auto& g = groups[static_cast<std::size_t>(id)];
     if (round < g.skip_until || (g.monolith && !Cfg::MONOLITH_FIGHTS && !(Cfg::MONOLITH_WHEN_DOMINANT && mono_dominant))) return -1.f;
-    if constexpr (Cfg::ZERO_FEED) {
-        if (zero_feed) {  // farm only where no enemy is (or was just) around
-            for (const auto& f : foes) if (cheb(f.pos, g.tiles.front()) <= Cfg::ZERO_FEED_AVOID) return -1.f;
-            for (const auto& gh : ghosts) if (gh.seen != round && cheb(gh.pos, g.tiles.front()) <= Cfg::ZERO_FEED_AVOID + gh.slack) return -1.f;
-        }
-    }
     // Monolith fights get long and a camp kill destroys the bag: go in empty-handed.
     if (g.monolith && bc::self().gem_count() > static_cast<unsigned>(Cfg::MONOLITH_MAX_BAG)) return -1.f;
     if (g.respawn_at > round + dist) return -1.f;
@@ -859,20 +853,7 @@ void Bot::assess_threat() {
         for (const auto& ab : e.abilities()) {
             if (ab.is_on_cooldown()) continue;
             if (ab.is_attack_reset()) f.reset = true;
-            else if (ab.is_dash()) {
-                f.dash = true;
-                if constexpr (Cfg::DASH_THREAT) {
-                    try {
-                        if (ab.info())
-                            if (const auto* d = std::get_if<bc::ability_dash>(&*ab.info())) {
-                                f.dash_dmg = e.focus() * d->modifier;
-                                f.dash_stun = d->duration > 0;
-                                f.dash_reach = static_cast<int>(d->range + d->radius);
-                            }
-                    } catch (...) {
-                    }
-                }
-            }
+            else if (ab.is_dash()) f.dash = true;
             if (ab.is_cc()) f.stun = true;
             if (ab.is_damage() || ab.is_aoe_damage()) f.spell = std::max(f.spell, ab.damage_amount());
         }
@@ -923,14 +904,6 @@ void Bot::assess_threat() {
     int nearest = 99;
     for (const auto& f : foes) nearest = std::min(nearest, cheb(f.pos, pos));
     outmatched = nearest <= Cfg::SKIRMISH_RANGE && side_power(pos, true) > Cfg::OUTMATCHED * side_power(pos, false);
-    if constexpr (Cfg::ZERO_FEED) {
-        if (zero_feed && nearest <= Cfg::SKIRMISH_RANGE) {
-            const float burst = my_burst();
-            bool killable = false;
-            for (const auto& f : foes) killable = killable || (f.hp <= burst && cheb(f.pos, pos) <= static_cast<int>(bc::self().attack_range()));
-            if (!killable) outmatched = true;
-        }
-    }
     if (Cfg::FIGHT_SIM_OUTMATCHED && nearest <= Cfg::SKIRMISH_RANGE) {
         const auto f = simulate_fight(pos, Cfg::FIGHT_SIM_ROUNDS, false);
         const float ours = f.ours0 > 0.f ? f.ours_left / f.ours0 : 0.f;
@@ -978,9 +951,6 @@ float Bot::burst_at(vec2 p) const {
         float best = 0.f;
         if (d <= walk) best = f.strength * (f.reset ? 2.f : 1.f);
         if (f.dash && d <= walk + 2) best = std::max(best, f.strength);
-        if constexpr (Cfg::DASH_THREAT)
-            if (f.dash && (f.dash_dmg > 0.f || f.dash_stun) && d <= f.dash_reach)
-                best = std::max(best, f.dash_dmg + f.strength * (f.dash_stun ? 2.f : 1.f));
         if (f.spell > 0.f && d <= 4) best = std::max(best, f.spell + (d <= hit ? f.strength : 0.f));
         if (f.stun && d <= 4) best = std::max(best, (d <= hit ? f.strength : 0.f) + f.strength);  // stunned, we eat another round
         total += best;
@@ -1052,7 +1022,7 @@ Bot::FightOutcome Bot::simulate_fight(vec2 at, int rounds, bool me_passive) cons
         std::fill(dmg.begin(), dmg.end(), 0.f);
         for (std::size_t i = 0; i < u.size(); ++i) {
             auto& a = u[i];
-            if (a.hp <= 0.f || a.stunned == r) continue;  // stunned for the round after the stun only
+            if (a.hp <= 0.f || a.stunned >= r) continue;
             int pick = -1, strongest = -1;
             for (std::size_t j = 0; j < u.size(); ++j) {
                 const auto& b = u[j];
@@ -1095,9 +1065,41 @@ float Bot::my_burst() const {
 
 // Step (or dash) to the reachable tile with the least enemy burst, preferring
 // home. Tribute first when an altar is in reach and the bag survives the wait.
+// A step away does not get us out of any chaser's next-turn reach (walk + attack, plus a dash
+// or an attack reset), and home is not one step off: running only forfeits our own damage.
+bool Bot::flight_futile() const {
+    if (spawn_field.get(pos) <= 2) return false;
+    for (const auto& f : foes) {
+        const int reach = f.ranged ? 3 + (f.reset ? 1 : 0) : 2 + (f.dash ? 2 : 0);
+        if (cheb(f.pos, pos) + 1 <= reach) return true;
+    }
+    return false;
+}
+
+bool Bot::converge() {
+    auto& me = bc::self();
+    if (my_hp < 0.5f * my_max || me.gem_count() >= 30 || foes.empty()) return false;
+    const Foe* best = nullptr;
+    for (const auto& f : foes) {
+        if (cheb(f.pos, pos) > 9) continue;
+        bool mate_in = false;
+        for (const auto& m : mates) mate_in = mate_in || cheb(m.pos, f.pos) <= 4;
+        if (!mate_in || side_power(f.pos, true) > side_power(f.pos, false)) continue;
+        if (!best || cheb(f.pos, pos) < cheb(best->pos, pos)) best = &f;
+    }
+    if (!best) return false;
+    const vec2 at = best->pos;
+    fight_enemies();
+    if (me.can_move()) move_to(square(at, static_cast<int>(me.attack_range())) & ~terrain);
+    if (!acted_attack) fight_enemies();
+    return true;
+}
+
 bool Bot::escape() {
     auto& me = bc::self();
     const bool lethal = burst_here * Cfg::LETHAL_MARGIN >= my_hp;
+    if constexpr (Cfg::STAND_SHOOT)
+        if (!acted_attack && flight_futile() && fight_enemies()) return true;
     if (me.gem_count() > 0 && !lethal && me.gem_count() <= 20)
         for (auto a : altar_tiles)
             if (cheb(a, pos) <= bc::constants::submit_gems_range && !bc::vision::has_altar_lock(a)) {
@@ -1199,8 +1201,6 @@ bool Bot::fight_enemies(bool kills_only) {
         if (f.hp <= burst) s += 10.f;
         if (Cfg::BREAK_CHANNELS && f.channel == Channel::RECALL) s += Cfg::BREAK_RECALL;  // any hit cancels it
         if (f.channel == Channel::TRIBUTE) s += f.gems / 50.f;  // standing still with a bag
-        if constexpr (Cfg::FOCUS_STICKY)
-            if (f.type == focus_type && round - focus_round <= 2) s += Cfg::FOCUS_STICKY_BONUS;
         return s;
     };
     std::vector<const Foe*> order;
@@ -1292,7 +1292,6 @@ bool Bot::fight_enemies(bool kills_only) {
                     continue;  // hidden since the snapshot (bush)
                 }
                 hit = &enemies[static_cast<std::size_t>(f->index)];
-                if constexpr (Cfg::FOCUS_STICKY) focus_type = f->type, focus_round = round;
                 acted_attack = engaged = true;
                 break;
             }
@@ -1500,65 +1499,6 @@ bool Bot::hand_off_aggro() {
     return false;
 }
 
-// Camp trap (meta research B2, probe-confirmed): camps hit the NEAREST champion within range 3
-// and a tribute channel holds the carrier still. Wake a strong camp next to a channelling enemy
-// and end the turn farther from it than the enemy, so the camp works on them.
-bool Bot::camp_trap() {
-    auto& me = bc::self();
-    if (!me.can_attack()) return false;
-    for (const auto& f : foes) {
-        const auto& e = enemies[static_cast<std::size_t>(f.index)];
-        int left = 0;
-        try {
-            if (!e.is_submitting_gems()) continue;
-            left = e.remaining_channel_time() + (e.has_completed_turn() ? 1 : 0);  // rounds until it lands
-        } catch (...) { continue; }
-        if (left < Cfg::CAMP_TRAP_MIN_TURNS || f.gems < Cfg::CAMP_TRAP_MIN_BAG) continue;
-        for (const auto& c : camps) {
-            try {
-                if (c.is_dead() || spec_of(c).strength < Cfg::CAMP_TRAP_MIN_STR) continue;
-                const vec2 cp = c.position();
-                const int de = cheb(cp, f.pos);
-                if (de > 3 || cheb(cp, pos) > static_cast<int>(me.attack_range())) continue;
-                bool ally_near = false;  // an ally as close as the enemy would draw the hits
-                for (const auto& m : mates) ally_near = ally_near || cheb(m.pos, cp) <= de;
-                if (ally_near) continue;
-                bool ok = cheb(cp, pos) > de;
-                vec2 step = pos;
-                if (!ok && !ranged)
-                    for (auto t : blocked_now().reachable_tiles(pos, 1).positions())
-                        if (cheb(cp, t) > de) { step = t; ok = true; break; }
-                if (!ok) continue;
-                me.attack(c);
-                acted_attack = true;
-                if (step != pos) {
-                    try { if (me.move_absolute(step)) pos = step; } catch (...) {}
-                }
-                return true;
-            } catch (...) {}
-        }
-    }
-    return false;
-}
-
-// Respawn denial (meta research B3, probe-confirmed): an occupied spawn tile keeps its group at
-// respawning:0. When clearly ahead, hold the tile of an enemy-side group we just captured.
-bool Bot::starve_ok(int g) {
-    if (body % 2 != 0 || round < Cfg::STARVE_ROUND) return false;
-    const int lead = static_cast<int>(bc::global_submitted_gems(team::ally)) - static_cast<int>(bc::global_submitted_gems(team::enemy));
-    if (lead < Cfg::STARVE_LEAD || bc::self().gem_count() > static_cast<unsigned>(Cfg::STARVE_MAX_BAG)) return false;
-    const auto& grp = groups[static_cast<std::size_t>(g)];
-    if (grp.gems <= 0 || grp.monolith) return false;
-    if (!enemy_field_ready) {
-        enemy_field_ready = true;
-        bitboard visited;
-        enemy_field.compute(terrain & ~enemy_spawn, enemy_spawn, visited);
-    }
-    int du = UNREACH, dt = UNREACH;
-    for (auto t : grp.tiles) du = std::min<int>(du, spawn_field.get(t)), dt = std::min<int>(dt, enemy_field.get(t));
-    return dt < du;  // nearer their spawn than ours: their supply, not ours
-}
-
 bool Bot::try_lock_altar() {
     auto& me = bc::self();
     auto& lock = me.consumables()[bc::consumable_type::altar_lock];
@@ -1673,26 +1613,6 @@ int Bot::capturer(const Group& g) const {
         const int s = score(m.type, m.gems);
         if (s > best_s) best_s = s, best = m.type;
     }
-    if constexpr (Cfg::WILLOW_YIELDS) {
-        // Willow loses the largest share of what she carries: hand gem rewards to anyone else near.
-        if (!Cfg::CAPTURE_BY_BAG && best_s < 100000 && g.gems > 0) {
-            const int willow = static_cast<int>(bc::champion_type::willow);
-            bool has_willow = static_cast<int>(kind) == willow;
-            int pick = -1, pick_s = -1;
-            auto consider = [&](int type, int gems) {
-                if (type == willow) return;
-                const int s = score(type, gems);
-                if (s > pick_s) pick_s = s, pick = type;
-            };
-            consider(static_cast<int>(kind), static_cast<int>(bc::self().gem_count()));
-            for (const auto& m : mates) {
-                if (!near(m.pos)) continue;
-                has_willow = has_willow || m.type == willow;
-                consider(m.type, m.gems);
-            }
-            return has_willow ? pick : -1;
-        }
-    }
     if (!Cfg::CAPTURE_BY_BAG && best_s < 100000) return -1;  // no Vesper case: first come, first served
     return best;
 }
@@ -1785,8 +1705,7 @@ bool Bot::retreat_if_hurt() {
     bool calm = foes.empty() && capture_group < 0;
     for (const auto& c : camps)
         if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= 5) calm = false;
-    float base_floor = paired ? std::max(Cfg::RETREAT_HP, Cfg::PAIR_RETREAT_HP) : Cfg::RETREAT_HP;
-    if constexpr (Cfg::ZERO_FEED) { if (zero_feed) base_floor = std::max(base_floor, Cfg::ZERO_FEED_RETREAT_HP); }
+    const float base_floor = paired ? std::max(Cfg::RETREAT_HP, Cfg::PAIR_RETREAT_HP) : Cfg::RETREAT_HP;
     const float floor_hp = calm ? std::max(Cfg::CALM_HEAL_HP, base_floor) : base_floor;
     float frac = me.health() / std::max(me.max_health(), 1.f);
     // One death kills both halves: when the other half is low, both go home.
@@ -1841,8 +1760,8 @@ bool Bot::should_bank() const {
     auto& me = bc::self();
     const int bag = static_cast<int>(me.gem_count());
     if (bag == 0) return false;
+    if (bc::global_submitted_gems(team::ally) + bag >= bc::constants::winning_gems) return true;  // the bag wins: always try
     if (Cfg::BLOCKED_ALTAR_FARM && round < bank_blocked_until) return false;  // no way to an altar: keep earning gold
-    if (bc::global_submitted_gems(team::ally) + bag >= bc::constants::winning_gems) return true;
     if (round + 40 >= static_cast<int>(bc::constants::max_rounds)) return true;
     const bool carrier = Cfg::PRISM_CARRIER && kind == bc::champion_type::prism;
     const bool quiet = round - last_foe_round > Cfg::PRISM_SAFE_ROUNDS;
@@ -1899,27 +1818,6 @@ bool Bot::bank() {
             if (!Cfg::CLEAR_ENEMY_LOCKS) continue;
             // A lock never expires: three basic attacks are the only way to bank here again.
             const int reach = static_cast<int>(me.attack_range());
-            if constexpr (Cfg::LOCK_FIX) {
-                // An open altar we may use: hit the lock only in passing, never detour or wait for it.
-                bool open_alt = false;
-                for (auto b2 : altar_tiles) {
-                    if (bc::vision::has_altar_lock(b2) && bc::vision::altar_lock_at(b2).is_enemy()) continue;
-                    if ((!any_safe || !threatened(b2)) && reachable(b2)) open_alt = true;
-                }
-                const bool in_reach = cheb(a, pos) <= reach;
-                if (in_reach && me.can_attack()) {
-                    try {
-                        me.attack(bc::vision::altar_lock_at(a));
-                        acted_attack = true;
-                    } catch (...) {
-                    }
-                    if (!open_alt) return true;
-                }
-                if (open_alt) continue;
-                if (in_reach) return true;
-                goals |= square(a, reach) & ~terrain;
-                continue;
-            }
             if (cheb(a, pos) <= reach) {
                 if (me.can_attack()) {
                     try {
@@ -1942,19 +1840,6 @@ bool Bot::bank() {
                 if (simulate_fight(pos, turns, true).me_dies_at >= 0) {
                     if (escape() || step_away(enemy_pos)) return true;
                     continue;
-                }
-            }
-            if constexpr (Cfg::WARD_ALTAR) {
-                // A channel blocks other actions, so the ward goes down first.
-                if (me.ward_cooldown() <= 0) {
-                    auto spots = (square(pos, 2) & ~bc::map::walls() & ~bc::map::holes()).positions();
-                    std::sort(spots.begin(), spots.end(), [&](vec2 x, vec2 y) { return cheb(x, a) < cheb(y, a); });
-                    for (std::size_t k = 0; k < spots.size() && k < 3; ++k) {
-                        try {
-                            if (me.place_ward(spots[k])) break;
-                        } catch (...) {
-                        }
-                    }
                 }
             }
             try {
@@ -2222,17 +2107,6 @@ void Bot::play_turn() {
         const int ours = static_cast<int>(bc::global_submitted_gems(team::ally));
         const int theirs = static_cast<int>(bc::global_submitted_gems(team::enemy));
         denial = Cfg::ENDGAME_DENIAL && theirs >= Cfg::DENY_ENEMY_GEMS && theirs > ours;
-        // Gem-dead (meta research A5): neither team has tributed and we cannot score at all
-        // (every gem group is a monolith, which we do not fight, or the altar is blocked). The
-        // game goes to the gold tiebreak, where each of our deaths is kill gold for them.
-        zero_feed = false;
-        if constexpr (Cfg::ZERO_FEED) {
-            if (mono_only < 0) {
-                mono_only = 1;
-                for (const auto& g : groups) if (g.gems > 0 && !g.monolith) { mono_only = 0; break; }
-            }
-            zero_feed = round >= Cfg::ZERO_FEED_ROUND && ours == 0 && theirs == 0 && (mono_only == 1 || round < bank_blocked_until);
-        }
     }
     g_stage = "dps";
     estimate_dps();
@@ -2254,9 +2128,6 @@ void Bot::play_turn() {
             grp.respawn_at = round + grp.max_respawn;
             grp.reward = false;
             broadcast_capture(g);
-            if constexpr (Cfg::STARVE) {
-                if (starve_ok(g)) { sit_group = g; sit_tile = pos; sit_since = round; }
-            }
             if (target == g) target = -1;
         }
         capture_group = -1;
@@ -2318,9 +2189,6 @@ void Bot::play_turn() {
 #endif
     }
     g_stage = "enemies";
-    if constexpr (Cfg::CAMP_TRAP) {
-        if (camp_trap()) return;
-    }
     try_lock_altar();
     g_stage = "enemies:channels";
     const vec2 before_break = pos;
@@ -2349,19 +2217,6 @@ void Bot::play_turn() {
 
     // Never walk off a capture or out of a fight we are winning.
     g_stage = "hold";
-    if constexpr (Cfg::STARVE) {
-        if (sit_group >= 0) {
-            const int lead = static_cast<int>(bc::global_submitted_gems(team::ally)) - static_cast<int>(bc::global_submitted_gems(team::enemy));
-            const bool stay = !outmatched && my_hp >= Cfg::STARVE_LEAVE_HP * my_max && lead >= Cfg::STARVE_LEAD / 2
-                && round - sit_since < Cfg::STARVE_MAX_ROUNDS && round < Cfg::STARVE_END_ROUND;
-            if (!stay) {
-                sit_group = -1;
-            } else {
-                if (pos != sit_tile) { bitboard goal; goal.set(sit_tile, true); move_to(goal, false); }
-                return;  // hold the spawn tile: the group cannot respawn while it is occupied
-            }
-        }
-    }
     if (capture_group >= 0 && groups[static_cast<std::size_t>(capture_group)].spawn.is_set(pos)) {
         auto& cg = groups[static_cast<std::size_t>(capture_group)];
         if (hand_over(cg)) {
@@ -2372,23 +2227,6 @@ void Bot::play_turn() {
             if (target == capture_group) target = -1;
             capture_group = -1;
         } else if (bc::global_submitted_gems(team::ally) + me.gem_count() < bc::constants::winning_gems) {
-            // Meta research A2: an enemy on the region resets the capture every phase, so sitting
-            // there earns nothing. Fight while the skirmish is ours; fold once it is not, or after a
-            // few contested turns, and farm elsewhere.
-            if constexpr (Cfg::CAPTURE_CONTEST) {
-                bool contested = false;
-                for (const auto& f : foes) contested = contested || cg.spawn.is_set(f.pos);
-                contest_turns = contested ? contest_turns + 1 : 0;
-                if (contested && (outmatched || contest_turns > Cfg::CONTEST_FOLD_TURNS)) {
-                    cg.skip_until = round + Cfg::CONTEST_SKIP_ROUNDS;
-                    if (target == capture_group) target = -1;
-                    capture_group = -1;
-                    contest_turns = 0;
-                    farm();
-                    return;
-                }
-                if (contested) fight_enemies();
-            }
             attack_camp(capture_group);
             return;
         }
@@ -2399,7 +2237,8 @@ void Bot::play_turn() {
             fighting = true;
 
     g_stage = "bank";
-    if (should_bank() && (!fighting || me.gem_count() >= 100)) {
+    const bool wins_now = bc::global_submitted_gems(team::ally) + me.gem_count() >= bc::constants::winning_gems;
+    if (should_bank() && (!fighting || me.gem_count() >= 100 || wins_now)) {  // a winning bag never waits on a camp
         if (bank() || !Cfg::BLOCKED_ALTAR_FARM) return;
     }
     // A bag that cannot be banked is no reason to skip shopping (spent gold still
@@ -2413,6 +2252,8 @@ void Bot::play_turn() {
             return;
         }
     }
+    if constexpr (Cfg::CONVERGE)
+        if (!fighting && capture_group < 0 && converge()) return;
     if (capture_group < 0 && deny()) return;
     if (!fighting && capture_group < 0 && answer_help()) return;
     g_stage = "farm";

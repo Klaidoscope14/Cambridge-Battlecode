@@ -13,7 +13,9 @@ Ground rules (same as every earlier version):
 - Some failures only show on the ladder (contest feeding, pick-offs). Build an adversary that reproduces
   the ladder pattern before trusting a local result.
 
-Priority order: C1 → C2 → C3 → C4 → C5 → C6.
+Part 1 (C1-C6): fixes from the ladder analysis. Part 2 (C7-C9): ideas from the v2.5.0-python bot.
+Part 3 (R1-R7): research-based design items. The combined order is in "Updated priority order"
+near the end.
 
 ---
 
@@ -168,6 +170,203 @@ sum. Ladder re-check: the count of "held a winning team total" losses.
   a second body rather than having the capturer fight or leave.
 
 ---
+
+---
+
+# Part 2: ideas from v2.5.0-python (our old Python bot)
+
+Source: `v2.5.0-python.zip` (repo root; read, never run). It is a 3-layer design: emergencies, scored
+objectives with hysteresis, then execution, plus a belief model and EV banking. v29 already covers or has
+outgrown most of it (commitment, lane spread via claims, winning-bag banking, lock interrupts and
+breaking, draft memory). Three ideas are worth carrying over.
+
+## C7. Camp-reach avoidance while walking (Python `nav.py::_dangerous`): merge into C1
+The Python bot refuses any step inside the attack range of a camp with strength > 0. This is the same
+fix as C1, and it confirms the approach. Keep C1's narrower rule (only awake camps that are not our
+target): the blanket version would block approaches to every camp we want to farm. Implement as part
+of C1 and test as one switch.
+
+## C8. `PRIORITY_ORDER`: use `set_priority()` to order our own turns
+**Mechanic.**
+- GameRules "Who goes first?": teams alternate champion by champion, and the starting team swaps
+  every round.
+- Within a team, higher priority acts first. `self().set_priority(int)` takes effect from the next
+  round and persists.
+- v29 never calls it, so our order is the draft order.
+
+**Change.** At the end of every `play_turn()`, set next round's priority from this turn's state:
+- highest: in a fight or under threat (`burst_here > 0`, or a foe within 4), and hurt carriers. They
+  strike or escape before the enemy's next champion acts.
+- next: champions that write shared memory (capture broadcast, a new claim, close-out flag C2),
+  so teammates read the message **in the same round** instead of one round later. This speeds up
+  CONVERGE and claims.
+- lowest: champions farming quietly far from enemies.
+
+Priority is scored like the Python bot's `10 + gems - hp-loss`, but driven by threat. Keep the value
+stable while nothing changes, so the order does not churn.
+
+**Test.** Full pool vs the field bots and a mirror. Expect gains in PvP-heavy games (zdive0, zgank,
+zpoke). Check that equal-strength fights now go our way more often (deaths for/against).
+
+## C9. `STATIC_OWNERSHIP`: label camps and altars from spawn geometry at init
+**Python `mapinfo.py`.**
+- It runs distance fields from both spawns.
+- A camp group is ours when `ally_dist + 2 < enemy_dist`, theirs on the reverse, contested otherwise.
+- An altar is "safe" when we reach it at least 1 tile earlier than the enemy.
+- v29 learns safety only from sightings (`altar_hot`) and has no ownership notion.
+
+**Change.**
+- In `init()`, compute `enemy_spawn_field` (one extra full-map field, about 2-11K fuel, on the first
+  turn's budget).
+- Store per group `owner ∈ {ours, theirs, contested}` and per altar `static_safe`.
+
+Uses:
+1. `bank()`: prefer `static_safe` altars when the bag is ≥ the threat-bank size (tie-break today is
+   distance only).
+2. C6 `CAPTURE_GUARD` / invasion defence: only guard our-owned and contested captures.
+3. Map features for R4 (macro plan): share of gems on our half vs contested.
+
+Alone it should be close to neutral. It is infrastructure for C6 and R4, so test it with them.
+
+---
+
+# Part 3: research-based items
+
+Each item names the work it comes from, the loss pattern it targets, and how it plugs into v29.
+Bigger than C1-C9: these are design changes for v30+, roughly in order of expected value per effort.
+
+## R1. One shared danger / influence map (potential fields)
+**From:** Hagelbäck & Johansson 2008, multi-agent potential fields in RTS; Tozour 2001, influence maps;
+Uriarte & Ontañón 2012, kiting with influence maps.
+**Targets:** isolated pick-offs. 78% of our ladder deaths are isolated and 97% untraded, and
+"allies within 8 but not 4" is the typical setup. It also covers C1 (camps).
+**Change.**
+- Replace the boolean `danger` bitboard in `move_to()` with a small float cost per tile around us
+  (radius 4-6), the sum of:
+  - enemy burst (existing `burst_at`)
+  - awake-camp damage (C1)
+  - remembered-enemy burst
+  - an **isolation cost**: + k for every tile farther than 4 from the nearest ally, applied only while
+    an enemy or ghost is within ~10
+- Pathing minimises distance + λ·cost instead of hard-avoiding tiles. With it OFF, behaviour reduces
+  to today's (λ = 0, threshold kept).
+
+**Test.** The local field bots under-punish isolation (see LadderPatterns). Build an isolation
+hunter first (zgank exists; extend it to go only after lone targets), then the full field.
+
+## R2. Fight prediction with fitted Lanchester exponents and a small portfolio search
+**From:** Stanescu, Barriga & Buro 2015, Lanchester attrition laws for StarCraft combat prediction;
+Churchill & Buro 2013, portfolio greedy search.
+**Targets:** fights we take and narrowly lose. Ladder replays show HP drains over 10 rounds while we
+outnumber 42% of the time.
+**Change.**
+1. `side_power()` today = Σ HP × dps with `OUTMATCHED = 1.25`. Fit the Lanchester exponent and
+   per-champion effectiveness from logged local fights: a regression on (our/their HP, dps, stuns,
+   dash) → winner. Use the fitted model as the outmatched test.
+2. For skirmishes with ≤ 3 v 3 bodies within 6, simulate 3-4 scripted policies for ~5 rounds and
+   pick the best outcome. Policies: focus the lowest HP, focus the carrier, kite, disengage to the
+   nearest ally. The old `simulate_fight()` already exists as the forward model.
+   Budget: < 15K fuel per call.
+**Test.** Deaths and kills in PvP vs zdive0/zgank/zpoke, and the field sum.
+
+## R3. Deterministic team task allocation (CBBA / Hungarian assignment)
+**From:** Choi, Brunet & How 2009, CBBA (consensus-based decentralised task allocation); Kuhn 1955,
+Hungarian method.
+**Targets:**
+- theft: 23 vs 14 gems a game, elk_arena 105, corridors 98
+- greedy claim collisions
+- nobody guarding captures or escorting carriers
+**Change.**
+- Every champion runs the same assignment on the same inputs: positions of allies in vision,
+  claims from shared memory, and static geometry. It produces a matching of bodies to tasks: farm
+  group g, guard the capture of g, escort carrier c, or close out (C2).
+- Cost = travel + kill/capture time − value, with the squad `need` as a multi-body task.
+- With ≤ 6 bodies and ≤ ~20 candidate tasks, the Hungarian method is cheap (O(n³) on a 6×20 matrix).
+- Ties break by body index, so every teammate gets the same answer without messages. That is the
+  same idea as today's `capturer()`, generalised.
+- This replaces `choose_target()`'s independent greedy pick; keep the old path as the fallback.
+
+**Test.** Full pool, the field sum, and theft per game in the local stats. Old note: the TOUR_PLAN
+beam search (multi-group routes) failed at 11/70; this is single-step assignment, not routing.
+
+## R4. Macro layer: a map-aware plan from the draft turn, updated by score state
+**From:** Wu et al. 2019, "Hierarchical Macro Strategy Model for MOBA Game AI" (Honor of Kings).
+It predicts phases and the regions to focus on, and micro play carries them out.
+**Targets:** the 7%-97% win-rate spread by map. Today the bot plays one rule set everywhere.
+**Change.**
+1. Draft turn (1M fuel): compute map features with C9. Features: monolith gem share, golem share,
+   altars inside camp groups, altar count and centrality, contested-gem share, gems-per-1000-rounds
+   supply, gem-dead flag, 3/4/5 bodies. Store a mode byte in draft memory.
+2. Modes: `FARM_RACE` (default = today), `MONOLITH` (C4 plays), `HOLD_HALF` (defend our-half camps,
+   C6), `GOLD_TIEBREAK` (gem-dead maps, C5), `ALTAR_IN_CAMP` (C1 routing, bank only when the group
+   is asleep or dead). The modes only change weights, thresholds and switches; no map is named.
+3. In-game switches by score state: `CLOSE_OUT` (C2), `DENIAL` (exists), and `CATCH_UP` (when
+   behind by more than X with the enemy close to 1000, contest their altar or carrier).
+
+**Test.** Mode by mode against the maps it targets, then the full pool. Every mode must be no
+worse than `FARM_RACE` on the maps it does not target.
+
+## R5. Particle belief for unseen enemies
+**From:** Weber, Mateas & Jhala 2011, particle model for state estimation in RTS games.
+**Targets:**
+- carriers walking into enemies we cannot see
+- the gank/ambush deaths in "open" ground
+- altar safety
+**Change.**
+- Replace ghost tracking (one decaying point per vanished enemy) with ~8 particles per enemy.
+- Each round, particles step one tile along legal moves, biased toward the camp groups, altars and
+  our carriers that the enemy is likely heading for.
+- Particles in our vision that see nothing are removed, and the set is resampled when the enemy is
+  seen again.
+- The particle density feeds R1's cost map and `SAFE_ALTARS`.
+- Fuel: 6 enemies × 8 particles × 1 step is negligible. Only the vision pruning costs, as bitboard ops.
+**Test.** Deaths while carrying ≥ 20, bag losses per game, and the field sum.
+
+## R6. Automatic tuning (CLOP or SPSA) and SPRT-stopped A/Bs
+**From:** Coulom 2011, CLOP (confident local optimisation for noisy black-box tuning); SPSA; Wald
+1945, the sequential probability ratio test (SPRT), as used by Stockfish's fishtest.
+**Targets:**
+- 100+ hand-tuned `Cfg` constants
+- many A/B verdicts within ±5 wins of baseline (noise), so real small gains get rejected and noise
+  gets shipped
+**Change (tooling only, no bot logic).**
+1. `tools/sprt.py`: run games in batches of 16 (`run-batch`) and stop when the
+   log-likelihood ratio crosses the bounds for H0: Δ ≤ 0 vs H1: Δ ≥ +2% (α = β = 0.05). Run it over
+   the field bots, alternating sides and maps.
+2. `tools/tune.py`: SPSA over a chosen set of 4-8 constants (`OUTMATCHED`, `BANK_BAG`,
+   `PVP_BANK_BAG`, `DANGER_TILE`, `RETREAT` HP, R1's λ and isolation k). Use compile-time overrides
+   (`-D` flags into `Cfg`) so each candidate is a build. Accept the tuned set only through SPRT.
+**Cost.** CPU time: about 10 s per game, 8 in parallel.
+
+## R7. Banking as optimal stopping (expected loss vs forgone farm)
+**From:** optimal stopping with a loss hazard; the Python bot's `economy.bank_pressure` is a rough
+version.
+**Targets:** fixed bag thresholds (`BANK_BAG` 48, `PVP_BANK_BAG` 30, and so on) that ignore how risky
+this tile is right now. 163 carried gems are lost per game in the ladder losses.
+**Change.**
+- Bank when `bag × P(lose bag before the next bank opportunity) > farm rate × (travel + channel
+  rounds)`.
+- P comes from R1/R5's danger along the path to the altar plus the current HP share. The farm rate
+  is the team's recent gems per round.
+- Keep the winning-bag (v28) and close-out (C2) rules as hard overrides.
+**Test.** The field sum, bag losses per game and avg win round. It must not reintroduce tiny-bag
+tributes (the old detour-banking lesson).
+
+---
+
+## Updated priority order
+1. **C1 + C7** (camp danger): reproducible bug, cheap.
+2. **C8** (`set_priority`): cheap, untested mechanic.
+3. **C2, C3** (close-out, boss altar): wins left on the table.
+4. **R6** (SPRT tooling): makes every later A/B cheaper and more trustworthy. Build it before the big items.
+5. **C9 → R4** (static ownership → macro modes), with **C4** (monoliths) and **C5** (gem-dead) as the
+   first modes.
+6. **R1** (influence map with an isolation term), with **R5** (particles) feeding it.
+7. **R3** (assignment), then **C6** (guards) on top of it.
+8. **R2, R7** (fight prediction, optimal-stopping banking): after R1/R5 exist, since both read the
+   danger map.
+
+Before Sprint 3 locks (31 Oct): realistically items 1-4, plus whatever of 5 passes SPRT.
 
 ## Measurement pipeline (re-run after each ladder upload)
 Scripts are in the session scratchpad `lad/` and should be copied into `Submission/tools/` if kept.

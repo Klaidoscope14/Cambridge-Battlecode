@@ -577,3 +577,83 @@ On v28, 40 maps x 2 sides (80 games each; v28: zgank 44, field zmeta/zpoke/zhor/
 - Both: zgank 51, field 338 (zmeta 70 =, zpoke 62 +6, zhor 74 -1, zrush 71 +3, zdive0 61 +3), mirror 49/80.
   vs zgank 12 games flipped to wins, 5 to losses; lanes 0/2 -> 2/2, collision 1/2 -> 2/2.
 v29 = v28 + both; kessoku.zip rebuilt (v28 zip kept in scratchpad). Ladder baseline to beat: v28 50%.
+
+### 2026-10-25: Plan_v29 C1-C5 implemented and measured (focused tests), nothing ships
+
+All in bots/v30 as Cfg switches, OFF = v29 (80/80 identical games vs zmeta). New adversaries: bots/zmono2
+(v29 + MONOLITH_FIGHTS + MONOLITH_WHEN_DOMINANT; v29 beats it only 43/80) and bots/zspawn (zgank + Heart
+and Vendetta camping the enemy spawn exit on maps with >= 80% of gems in monoliths, from round 150).
+Focused A/B (variant vs v29 on the targeted maps only; v29 baselines from its full-pool runs):
+- C1 CAMP_DANGER (awake camps of other groups are no-go tiles): full field 364 vs 389, mirror 37/80, and
+  starfish side-B deaths unchanged (48 -> 46, 44 -> 58). Real cause: ~half the side-B deaths are camp kills
+  at the two altars inside the centre elk herd's reach (tiles 24-27,19-21).
+- C1b ALTAR_CAMP_WAIT (altars inside an awake herd's reach are threatened; all hot -> wait outside):
+  29 vs 33 on starfish/hooks/shortcut/broken_curve/boss_battle. Old BURST_RETREAT_MULT 1.0: 31 vs 33.
+- C2 TEAM_CLOSEOUT (visible allies' bags) 48 vs 48; CLOSEOUT_MARGIN 150: 48 vs 48 (12 close maps).
+- C3 BOSS_ALTAR_OPEN 10 vs 10 on boss_battle; never fires locally (traced: nobody kills the boss, not even
+  zmono2). C3 + BOSS_RUSH_BAG 100: 0 vs 10 (idle carriers lose the gold tiebreak).
+- C4 on 9 monolith maps vs zmono2/zgank/zmeta: MONOLITH_FIGHTS 34, WHEN_DOMINANT 33, mono-only (share 0.99)
+  33, mono vulture (VULTURE, MIN_HP 1e9) 34, MONO_QUIET 36 vs v29 34; but MONO_QUIET mirror 20/44.
+- C5 SPAWN_REGROUP 6 vs 7 on contest/stampede vs zspawn/zgank/zmeta. Old HELP_CALLS 16 vs 17 (invasion maps).
+- Combined TEAM_CLOSEOUT + BOSS_ALTAR_OPEN + MONO_QUIET on 22 maps: zgank 25/27, zmeta 36/38, zmono2 23/24
+  (v30c vs v29), mirror 19/44 -> not shipped. kessoku.zip stays v29.
+C6 not built (plan: measure v29 on the ladder first).
+
+### 2026-10-25: first v29 ladder read (95 games, 18:10-21:10 UTC 24 Oct)
+
+v29 45% (43/95) vs v28 50% over 1220; v28's per-map rates re-weighted to v29's map mix predict 52%, and
+v29's opponents are slightly weaker (mean current rating 1631 vs 1658). Rank 232 -> 254, rating 1632 -> 1618.
+Deaths per loss 18.5 (v28 16.4), per win 7.6 (6.1); traded 7% (5%); isolated 81% (82%). C6: our deaths
+on our own half 7.9/game (6.6), enemy deaths on our half 2.5 (2.0); gems stolen from our clears 35.5/game
+(34.5), we steal 27.3 (21.9). About 1.4 standard errors below expectation: leaning negative, not conclusive.
+Prime suspect STAND_SHOOT (alone it was worse locally: field 311, mirror 40/80); CONVERGE alone was zgank
+52, field 330, mirror 48/80. Spawn geometry for all 40 maps: scratchpad lad29/geo.json (from bots/zgeo).
+
+### 2026-10-25: C8 turn priority measured, dropped; tools/sprt.py
+
+tools/sprt.py: paired early-stopping A/B (same shuffled map/side/opponent games for variant and base, Wald
+SPRT on discordant games, H1 P(+) = 0.65, alpha = beta = 0.05, results cached per source hash).
+C8 PRIORITY_ORDER (set_priority verified working: tiers read back a round later) on 12 PvP maps vs
+zgank/zdive0/zpoke, 72 games each, base v30: fighters first 43 vs 47 (+8 -12), fighters last 48 vs 47
+(+14 -13). Turn order within the team does not help -> dropped.
+
+### 2026-10-25: R1 (isolation) and R3 (assignment) measured with tools/sprt.py, none ship
+
+Dev source bots/v32 = v30 + switches ISO_PATH, ISO_TARGET, R3_ASSIGN (all OFF = v30).
+- R1 ISO_PATH (while an enemy seen/remembered is within 10, route only through tiles within 4 of an ally,
+  else normal routing): 12 PvP maps vs zgank/zdive0/zpoke, 72 games: 48 vs 47 (+7 -6) -> neutral.
+- R1 ISO_TARGET (score x0.5 for a group with an enemy near and no ally within 6): 38 vs 44 (+9 -15), SPRT reject.
+- R3_ASSIGN (match us + 3 nearest visible allies to our top 8 groups, squads take req+1 bodies), 12 theft
+  maps vs zgank/zmeta/zpoke: exhaustive search + second scoring pass ran out of fuel 1535 turns a game
+  (v30: 14) -> 9 vs 22; greedy matching with value/time estimates (fuel 35/game) still 26 vs 34 (+3 -11),
+  SPRT reject. Without shared vision each body solves a different assignment; claims coordinate better.
+
+### 2026-10-25: R2 fitted fight model -> v31 candidate (FIT_FIGHT, threshold 0.20)
+
+Data: v30 + a per-skirmish-round feature log vs zgank/zdive0/zpoke, 40 maps x 2 sides (240 games, 223K rows,
+4.4% followed by our death within 8 rounds). Logistic model (tools/fight_build.py, tools/fight_fit.py; split by
+game): test AUC 0.889 vs 0.816 for the power ratio and 0.705 for the OUTMATCHED flag. Strongest terms: nearest
+enemy distance, log dps ratio, our hp share, enemy hp share.
+FIT_FIGHT (outmatched = P(die) >= threshold) vs v30 with tools/sprt.py: 0.025 and 0.043 24-32 (reject),
+0.09 46-47, 0.20 50-47 on 12 PvP maps and 67-63 on 12 other maps vs zmeta/zhor/zrush, mirror 23/40 (more
+deaths, 553 vs 421, but more wins), 0.35 37-44. Lesson again: better prediction used to flee more loses; used
+to stay in fights unless death is likely, it gains a little everywhere. v31 = v30 + FIT_FIGHT 0.20 (bots/v31).
+Part 2 of R2 (policy search) not built.
+
+### 2026-10-25: v30 matches from MFF1 on (40 games, 22:23-22:41 UTC 24 Oct)
+
+20 unranked vs MFF1 (Cassi&Issac, Varg, Vesper, Ryth, Stellar): 8/20. gemfight 4/4, great_wall 2/4,
+monolith 1/4, starvation 1/4, gold_rush (3 champions) 0/4 with our deaths 23-30 vs their 1-2.
+Deaths per loss 26.7, our deaths on our own half 8.2/game, traded 2%.
+20 after MFF1 (ranked slop 3/5, Ascendance 2/5; unranked Tozo's Disciples 2/5, Milk and Potatoes 1/5): 8/20,
+deaths/loss 10.2, collected 824 vs 796 -> mostly close races, not pick-offs.
+New failure: 00reverse_spiral spawn standoff (2 of 3 games): the two spawns are adjacent in the centre, our
+champions see enemies 2-4 tiles away from round 2, the outmatched/lethal branch calls escape(), which returns
+"done" while we stand on our spawn (heal), so all four sit on the spawn for 2000 rounds (0 gems, 0 gold, no
+faults); the opponent idles too after 2 clears and the full tie goes to side B ("tiebreak_second_team").
+Earlier: one such game in 21 v28 games (we were side B and won it). Fix candidate: when no enemy can enter
+our spawn and we have taken no damage for N rounds, ignore outmatched/escape on the spawn and farm.
+Standoff follow-up (same day): my first diagnosis was wrong - v31's escape() has no "stay on spawn" return (only
+the low-HP retreat does, and the champions were at full HP). The freeze cause is still unknown; the speculative
+SPAWN_STANDOFF patch was discarded untested and kessoku.zip stays v31. Next: reproduce on 00reverse_spiral with a
+trace of g_stage per turn for a champion standing on the spawn.

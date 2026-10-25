@@ -1,6 +1,6 @@
 # How to submit (CAMBC 2026)
 
-`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v29, also frozen as `bots/v29`; `bots/v28` is the rollback).
+`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v31 = v30 + the fitted fight model FIT_FIGHT, also frozen as `bots/v31`; `bots/v30`, `bots/v29` and `bots/v28` are rollbacks).
 Ladder team: **HighCortisol** (team id `58271d23-d86a-48de-987a-5d82c983d7db`).
 
 ## Where the submission zip lives
@@ -29,6 +29,9 @@ cambc build v29                                     # frozen copy of the live ve
 python3 tools/ab.py mytest kessoku v29              # all 40 pool maps, both sides, 8 in parallel
 python3 tools/ab.py mytest_g kessoku zgank 00lanes  # specific maps
 ```
+Faster verdicts: `python3 tools/sprt.py VARIANT BASE zgank,zdive0,zpoke --maps m1,m2,...` plays both bots on the
+same shuffled games in batches of 16 and stops early on a sequential test over the games only one of them
+won (cached per source hash, so the baseline is never replayed).
 `tools/ab.py` wraps `cambc run-batch --release` and prints wins, tributed gems, deaths, gold
 earned and bot faults per game. Results are cached per TAG under `$TMPDIR/kessoku_ab/`, so use
 a new TAG (or delete the folder) after changing a bot. For variants, copy `bots/kessoku` to a
@@ -48,6 +51,12 @@ In summaries, a death's killer often appears as `Unknown entity kind (1)` with t
 champion's roster id: those are champion kills. Full replay state (positions, health, gems at
 any step) can be read in Node with the visualiser's engine wasm; see MetaResearch_v25.md
 ("ladder loss replays read death by death").
+
+Version comparison on the ladder (win rate vs the earlier version on the same map mix, deaths per
+loss/win, traded deaths, deaths on our half, capture theft):
+```bash
+python3 tools/ladder_compare.py v28=2026-10-22T19:30 v29=2026-10-24T18:10 v30=<upload time UTC>
+```
 
 ## Submit
 Upload `kessoku.zip` on the platform's Submissions page (or `cambc login` then `cambc submit kessoku`).
