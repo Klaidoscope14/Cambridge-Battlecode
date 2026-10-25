@@ -34,8 +34,8 @@ Version names are internal (the ladder numbers its uploads one lower until v28: 
 | v30 | v29 without STAND_SHOOT | probably never uploaded | |
 | v31 | + `FIT_FIGHT` 0.20 (logistic fight model) | **51% (185 games)**, v29 48% (152) | +3 PvP, +4 field |
 | v35 | + reverse_spiral standoff fix | | 243-243 vs v31 |
-| v36all | + LESS_WAIT, TREASURE_FIRST, BRUISER_ITEMS (ladder "v32", live from 09:40 UTC 25 Oct) | **18-7 after 25 games** (v31 map-weighted 56%) | 259 vs 243 (320 paired) |
-| v40pr | + VESPER_STR_STACK + DUEL_STAND + PAIRING (packaged 2026-10-25, not yet uploaded) | | vs v36all on 11 bots 746 vs 720 (+78 -52); head to head 47 vs 40; zmarc 51 vs 43 (vs v39ds) |
+| v36all | + LESS_WAIT, TREASURE_FIRST, BRUISER_ITEMS (ladder "v32", live from 09:40 UTC 25 Oct) | 32-23 (58%) over 55 games, 09:40-11:20 UTC (first 25: 18-7) | 259 vs 243 (320 paired) |
+| v40pr | + VESPER_STR_STACK + DUEL_STAND + PAIRING (ladder "v33", live from 11:30 UTC 25 Oct) | 3-2 after 5 games | vs v36all on 11 bots 746 vs 720 (+78 -52); head to head 47 vs 40; zmarc 51 vs 43 (vs v39ds) |
 
 ---
 
@@ -183,7 +183,7 @@ Ordered by current priority.
 4. **Teleport crystals** on wall maps (crystal range 3, ignores terrain, 3-turn channel).
 5. **Monoliths** vs an opponent that takes them (`bots/zmono2`): vulture-style finish of softened monoliths, monolith
    mode on monolith-only maps.
-6. **Team close-out**: broadcast bags or a flag in byte 7 (byte 7 is free; HELP_CALLS off).
+6. **Team close-out**: needs a shared-memory slot; byte 7 is now taken by PAIRING's invader broadcast, so pack it elsewhere.
 7. **Static ownership** of groups/altars from both spawn fields (infrastructure for map modes and capture guards).
 8. **Map modes from the draft turn** (1M fuel, 1,024 read-only bytes; `draft.cpp` writes a plan nobody reads):
    FARM_RACE / MONOLITH / HOLD_HALF / GOLD_TIEBREAK / ALTAR_IN_CAMP, chosen from map features, never map names.
@@ -263,6 +263,9 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 | `RESCUE` (converge on a hurt ally hit by 1-2 enemies at side power >= 0.8) | fires rarely: 38 vs 38, 268 vs 267 |
 | `DUEL_STAND` wide (HP ratio 3, chaser within 3) | 307 vs 305 over zmarc + field |
 | `PAIRING` variants on v39ds (720 games on 9 bots each): mult 0.5 / 0.1, window 40 / 160, bruisers-only trigger | 563-570 vs 570: neutral |
+| `STUN_CHASER` (stun a non-Marcella melee enemy within 2 of us or next to a hurt ally; stun before escaping), on v40pr | 794 vs 786 over 12 opponents (+41 -33); zmarc 52 vs 51, deaths unchanged: neutral |
+| `STUN_RESERVE` (no stuns on camps while enemies were seen in the last 30 rounds) | 778 vs 786; zmarc 46 vs 51 (+5 -14): worse |
+| `STUN_CHASER` + `STUN_RESERVE` | 763 vs 786 |
 
 ---
 

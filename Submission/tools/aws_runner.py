@@ -97,7 +97,12 @@ def ensure_key_and_group():
 
 def ssh(cmd, capture=False):
     ip = load_state()['ip']
-    r = subprocess.run([*SSH, f'ubuntu@{ip}', cmd], capture_output=capture, text=True)
+    for k in range(4):  # 255 = ssh could not connect (network blip): retry; anything else is the command's own failure
+        r = subprocess.run([*SSH, f'ubuntu@{ip}', cmd], capture_output=capture, text=True)
+        if r.returncode != 255:
+            break
+        log(f'ssh connection failed, retry {k + 1}')
+        time.sleep(10 * (k + 1))
     if r.returncode:
         raise SystemExit(f'remote command failed ({r.returncode}): {cmd[:120]}\n{(r.stderr or "")[-2000:]}')
     return r.stdout if capture else None
@@ -111,7 +116,9 @@ def up():
                   '/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id')['Parameter']['Value']
         ud = os.path.join(tempfile.gettempdir(), 'kessoku_userdata.sh')
         open(ud, 'w').write(USER_DATA)
-        for t in TYPES:
+        launched = False
+        for attempt in range(6):  # a just-terminated spot request still counts against the limit for a minute or two
+          for t in TYPES:
             r = subprocess.run(['aws', 'ec2', 'run-instances', '--region', region(), '--output', 'json', '--image-id', ami,
                                 '--instance-type', t, '--key-name', NAME, '--security-group-ids', sg,
                                 '--instance-market-options',
@@ -125,9 +132,14 @@ def up():
             if r.returncode == 0:
                 iid = json.loads(r.stdout)['Instances'][0]['InstanceId']
                 log(f'launched {t} spot {iid} (powers off after {MAX_MINUTES} min)')
+                launched = True
                 break
             log(f'{t}: {r.stderr.strip().splitlines()[-1][:160]}')
-        else:
+          if launched:
+            break
+          log('waiting 30 s before retrying the launch')
+          time.sleep(30)
+        if not launched:
             raise SystemExit('no instance type could be launched')
         subprocess.run(['aws', 'ec2', 'wait', 'instance-running', '--region', region(), '--instance-ids', iid], check=True)
         ip = aws('ec2', 'describe-instances', '--instance-ids', iid)['Reservations'][0]['Instances'][0]['PublicIpAddress']
@@ -143,10 +155,19 @@ def up():
     raise SystemExit('instance did not become ready within 10 minutes')
 
 
+def rsync(args):
+    for k in range(4):
+        if subprocess.run(['rsync', *args]).returncode == 0:
+            return
+        log(f'rsync failed, retry {k + 1}')
+        time.sleep(10 * (k + 1))
+    raise SystemExit('rsync failed')
+
+
 def sync():
     ip = load_state()['ip']
-    subprocess.run(['rsync', '-az', '--delete', '--exclude', '.cambc', '--exclude', 'replays', '--exclude', '__pycache__',
-                    '--exclude', '*.repl26a', '-e', ' '.join(SSH), f'{P}/', f'ubuntu@{ip}:/home/ubuntu/Submission/'], check=True)
+    rsync(['-az', '--delete', '--exclude', '.cambc', '--exclude', 'replays', '--exclude', '__pycache__',
+                    '--exclude', '*.repl26a', '-e', ' '.join(SSH), f'{P}/', f'ubuntu@{ip}:/home/ubuntu/Submission/'])
     log('synced Submission/')
 
 
@@ -172,7 +193,7 @@ def pull(replays=False):
     ip = load_state()['ip']
     os.makedirs(CACHE, exist_ok=True)
     flt = [] if replays else ['--include', '*/', '--include', '*.json', '--exclude', '*']
-    subprocess.run(['rsync', '-az', *flt, '-e', ' '.join(SSH), f'ubuntu@{ip}:/tmp/kessoku_sprt/', f'{CACHE}/'], check=True)
+    rsync(['-az', *flt, '-e', ' '.join(SSH), f'ubuntu@{ip}:/tmp/kessoku_sprt/', f'{CACHE}/'])
     log(f'results pulled into {CACHE}')
 
 
