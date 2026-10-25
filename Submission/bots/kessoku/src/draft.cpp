@@ -86,7 +86,8 @@ void play_draft() {
         }
     }
     if (Cfg::TEST_FORCE_RANGED || Cfg::RANGED_META)  // patch 3.0 meta: open Vesper, Tavi, Willow
-        for (auto p : {CD::vesper_vale, CD::tavi, CD::willow})
+        for (auto p : {CD::vesper_vale, CD::tavi,
+                       Cfg::MELEE_OPENER == 1 ? CD::vendetta : Cfg::MELEE_OPENER == 2 ? CD::marcella : CD::willow})
             if (opening-- > 0 && std::find(ours.begin(), ours.end(), p) == ours.end()) {
                 bc::draft::pick(p);
                 return;

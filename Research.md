@@ -34,7 +34,8 @@ Version names are internal (the ladder numbers its uploads one lower until v28: 
 | v30 | v29 without STAND_SHOOT | probably never uploaded | |
 | v31 | + `FIT_FIGHT` 0.20 (logistic fight model) | **51% (185 games)**, v29 48% (152) | +3 PvP, +4 field |
 | v35 | + reverse_spiral standoff fix | | 243-243 vs v31 |
-| v36all | + LESS_WAIT, TREASURE_FIRST, BRUISER_ITEMS | not yet measured | 259 vs 243 (320 paired) |
+| v36all | + LESS_WAIT, TREASURE_FIRST, BRUISER_ITEMS (ladder "v32", live from 09:40 UTC 25 Oct) | **18-7 after 25 games** (v31 map-weighted 56%) | 259 vs 243 (320 paired) |
+| v40pr | + VESPER_STR_STACK + DUEL_STAND + PAIRING (packaged 2026-10-25, not yet uploaded) | | vs v36all on 11 bots 746 vs 720 (+78 -52); head to head 47 vs 40; zmarc 51 vs 43 (vs v39ds) |
 
 ---
 
@@ -146,12 +147,36 @@ willow best girl, Claudus Maximus and Trzy Kwaterki (250 games), 40 replays prof
 
 ---
 
+### v36all first ladder read (25 games, 09:40-10:20 UTC 25 Oct; means, compared with v31's 190 games)
+
+- 18-7 (72%) on maps where v31 won 56% (about 1.6 standard errors: promising, not proven).
+- gold@300 1,100 -> 1,173 (local A/B predicted +75); clears@400 13.9 -> 17.8; first clear r26 -> r24; tributed per 1,000
+  rounds 561 -> 798; games end at r1,090 (v31 1,338); gems lost on death 169 -> 70.
+- The 7 losses are death spirals on our own half with nothing traded: deaths 26.7 vs 1.9 per loss (interlock 71-2,
+  eight 44-1, elkring 31-1 and 12-0, quadrants 14-0). **Marcella is the top killer in 5 of 7**, usually with Ryth /
+  Heart of Ruin / Vendetta; 3 losses to one team (Quantum Tributers: Vesper, Willow, Marcella, Ryth, Heart). 00elkring 0/3.
+- So the economy constraint is relieved in most games; in losses the binding constraint is now fights against
+  stun-immune melee invaders (section 5 item 2).
+
 ## 5. Open ideas (not yet built or not yet conclusive)
 
 Ordered by current priority.
-1. **More early economy**: smaller bags (BANK_BAG 48 -> ~25; earlier local tests of 30-70 were flat, retest on
-   gold@300/clears@400); first lock around r60; earlier first purchase (ours r75, top r44-53).
-2. **Fight conversion** (next constraint): stay and trade instead of fleeing; R2 part 2 (scripted-policy search over
+1. **More early economy**: smaller bags, earlier shopping, dropping Monster and melee openers were measured and rejected
+   (section 6). **Candidate `VESPER_STR_STACK`** (bots/v38vs0 = v36all + Vesper buys only Bruiser Strength after her
+   openers): set 1 (zgank/zmeta/zpoke/zdive0) gold@300 +17 (2.9σ), gold@500 +47 (2.8σ), 267 vs 259 (+22 -14); set 2
+   (v36all/zhor/zrush/zstack) gold@300 -7, gold@500 +34 (2.2σ), 250 vs 243 (+24 -17). Combined +46 -31, not yet significant.
+2. **Fight conversion** (next constraint). Adversary `bots/zmarc` (v36all engine + Quantum Tributers draft Vesper/Marcella/
+   Willow/Ryth/Heart + chase + melee bruisers prefer camps on our half) reproduces the ladder losses: v36all 42/80, deaths
+   per loss 29.6 vs 8.5, 94% untraded, 64% on our half, Marcella top killer, interlock and eight 0/2. Replays of 985 deaths:
+   69% have no ally within 4, usually one melee enemy within 3, HP 82% -> 53% -> 29% over 10 rounds, 59% keep fleeing,
+   enemies nearby lose >10% HP in only 24%. Candidate `DUEL_STAND` (bots/v39ds: one melee chaser within 2 that reaches us
+   anyway and has <= 2x our HP -> shoot back): zmarc 43 vs 38 (+6 -1), field 276 vs 267 (+13 -4), but v38vs0/zhor/zrush/
+   zstack 249 vs 253 (+5 -9); 720 games +24 -14, not significant. The pick-off problem is not solved: next ideas are
+   pairing ranged champions while invaders are seen, and stuns timed on Heart/Ryth (Marcella is stun-immune).
+   `PAIRING` (bots/v40, shipped in v40pr: after any of us sees an enemy melee champion on our half - broadcast in byte 7 -
+   ranged champions value groups with no ally within 5 and no ally claim at 0.25 for 80 rounds): vs zmarc 51 vs 43, our
+   deaths 18.9 -> 14.8 and theirs 13.1 -> 16.0; elsewhere small losses (zdive0 -4, zstack -3, zmeta -3).
+   Earlier fight notes: stay and trade instead of fleeing; R2 part 2 (scripted-policy search over
    3-4 policies for <= 3v3 skirmishes, < 15k fuel) on top of the fitted model (`tools/fight_build.py`, `fight_fit.py`).
 3. **Wards**: earlier local tests (ward on capture / at altar) were neutral, but every top team wards heavily. Untested
    as forward vision for fights or contested camps.
@@ -225,6 +250,19 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 | starfish `PARTIAL_HP` / `TARGET_RECHECK` / gated v42 | starfish deaths 284 -> 142 but pool 76 vs 92; v42 51 vs 66 |
 | `BUSH_COVER` (bushes count as safe) | +2%, LLR +0.58: inconclusive; assumes opponents never probe bushes |
 | Ranged step-back vs melee chaser | loses (no damage dealt while fleeing) |
+| `SMALL_BAGS` bank at 25 (behind 35), on v36all | bags 39 -> 34, gold@300 -30 (-2.3σ), 253 vs 259 |
+| `SMALL_BAGS` bank at 35 (behind 45) | neutral: 257 vs 259 |
+| `EARLY_SHOP` (r<300, >= 150 gold, walk <= 20 or recall) | first buy 81 -> 76, first lock 102 -> 93, gold@300 -24 (-1.9σ); wins 266 vs 259 and 246 vs 243 on a second opponent set (+32 -22 total, not significant) |
+| `EARLY_SHOP` without the recall | 259 vs 259, 245 vs 243: neutral |
+| `SMALL_BAGS` + `EARLY_SHOP` | gold@300 -45, 250 vs 259 |
+| `NO_MONSTER` (drop Monster from every build), on v36all | gold@300 -21 (-2.2σ), 253 vs 259 |
+| `MELEE_OPENER` Vendetta instead of Willow | gold@300 -70 (-2.9σ), first lock r87; wins 267 vs 259 (+35 -27) |
+| `MELEE_OPENER` Marcella instead of Willow | gold@300 -57 (-2.6σ); wins 269 vs 259; with Vesper Strength 263 vs 259 and 247 vs 243 |
+| `VESPER_STR_STACK` with 40% Health | gold@300 +12 (2.5σ), 266 vs 259 (weaker than pure Strength) |
+| `FLEE_TO_ALLY` (escape toward the nearest healthy ally instead of home), on v38vs0 | zmarc 43 vs 38 but field 254 vs 267 (+16 -29) |
+| `RESCUE` (converge on a hurt ally hit by 1-2 enemies at side power >= 0.8) | fires rarely: 38 vs 38, 268 vs 267 |
+| `DUEL_STAND` wide (HP ratio 3, chaser within 3) | 307 vs 305 over zmarc + field |
+| `PAIRING` variants on v39ds (720 games on 9 bots each): mult 0.5 / 0.1, window 40 / 160, bruisers-only trigger | 563-570 vs 570: neutral |
 
 ---
 
@@ -252,6 +290,8 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 
 - Compare a change against **the same code with the switch off**, not an older build; verify off == base first.
 - **A mirror win is not evidence**: several variants gained 4-8 mirror wins and lost 10+ to other opponents.
+- Use `Submission/tools/aws_runner.py` for anything bigger than a quick check: ~800 games in 45 s on a 192-vCPU spot
+  instance, identical results to the Mac, instance terminated automatically.
 - Accept on the field sum (zgank, zmeta, zpoke, zdive0, plus zhor/zrush/zstack/zmono2 as relevant), with no opponent
   down by more than ~4 wins; check targeted maps separately; use `tools/sprt.py` for verdicts.
 - Local opponents are forks of our engine: they do not reproduce ladder pick-offs, monolith takes, lane stacking or

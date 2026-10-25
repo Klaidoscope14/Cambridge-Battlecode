@@ -87,6 +87,10 @@ class Bot {
     int wait_turns = 0;    // turns spent holding for a squad
     int next_eval = 0;     // round of the next full target re-score
     int last_foe_round = -1000;  // last round an enemy champion was in sight
+    bc::distance_field enemy_field;  // PAIRING: distance to the enemy spawn, built on first need
+    bool enemy_field_ready = false;
+    void note_invaders();
+    bool invaders_recent() const;
     int standing = 0;            // +1 far ahead, -1 far behind, 0 otherwise
     bool denial = false;         // enemy is closing out the game: deny instead of farm
     std::vector<vec2> tribute_tiles;  // tiles a champion can tribute from

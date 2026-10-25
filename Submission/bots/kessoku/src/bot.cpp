@@ -164,6 +164,35 @@ void Bot::read_memory() {
     }
 }
 
+// PAIRING: a visible enemy melee champion nearer our spawn than theirs is an invader; broadcast the round (in 8s).
+void Bot::note_invaders() {
+    if (!Cfg::PAIRING || foes.empty()) return;
+    bool seen = false;
+    for (const auto& f : foes) {
+        if (f.weight < 1.f || f.ranged) continue;
+        if (Cfg::PAIR_BRUISERS_ONLY && f.type != static_cast<int>(bc::champion_type::marcella)
+            && f.type != static_cast<int>(bc::champion_type::heart_of_ruin) && f.type != static_cast<int>(bc::champion_type::ryth)
+            && f.type != static_cast<int>(bc::champion_type::vendetta))
+            continue;
+        if (!enemy_field_ready) {
+            bitboard visited;
+            enemy_field.compute(terrain & ~enemy_spawn, enemy_spawn, visited);
+            enemy_field_ready = true;
+        }
+        if (spawn_field.get(f.pos) < enemy_field.get(f.pos)) seen = true;
+    }
+    if (!seen) return;
+    const std::uint8_t v = static_cast<std::uint8_t>(std::min(254, round >> 3) + 1);
+    if (mem[Mem::HELP] == v) return;
+    mem[Mem::HELP] = seen_help = v;
+    bc::shared_memory.write(Mem::HELP, std::span<const std::byte>{reinterpret_cast<const std::byte*>(&v), 1});
+}
+
+bool Bot::invaders_recent() const {
+    const int v = mem[Mem::HELP];
+    return Cfg::PAIRING && v > 0 && (round >> 3) - (v - 1) <= Cfg::PAIR_WINDOW / 8;
+}
+
 void Bot::write_claim(int group) {
     const std::uint8_t v = static_cast<std::uint8_t>(group + 1);
     if (mem[Mem::CLAIMS + body] == v) return;
@@ -331,8 +360,10 @@ std::optional<bc::item_type> Bot::next_item() const {
         plan.push_back({I::durability_shard_of_health, I::durability_emblem_of_health});
     if (kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 2)
         plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
-    if (focus) plan.push_back({I::monster_shard_of_focus, I::monster_emblem_of_focus});
-    else plan.push_back({I::monster_shard_of_strength, I::monster_emblem_of_strength});
+    if (!Cfg::NO_MONSTER) {
+        if (focus) plan.push_back({I::monster_shard_of_focus, I::monster_emblem_of_focus});
+        else plan.push_back({I::monster_shard_of_strength, I::monster_emblem_of_strength});
+    }
     if (!Cfg::TREASURE_FIRST && !(kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 2))
         plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
     // Tavi shops anywhere, so he rarely recalls: Home is wasted on him.
@@ -348,7 +379,8 @@ std::optional<bc::item_type> Bot::next_item() const {
         const int atk = static_cast<int>(owned[I::bruiser_emblem_of_strength] + owned[I::bruiser_emblem_of_focus]) * 5
             + static_cast<int>(owned[I::bruiser_shard_of_strength] + owned[I::bruiser_shard_of_focus]);
         const int hp_sh = static_cast<int>(owned[I::bruiser_emblem_of_health]) * 5 + static_cast<int>(owned[I::bruiser_shard_of_health]);
-        if (Cfg::HEALTH_PCT > 0 && hp_sh * 100 < Cfg::HEALTH_PCT * atk + 50) return I::bruiser_shard_of_health;
+        const int pct = Cfg::VESPER_STR_STACK && kind == bc::champion_type::vesper_vale ? Cfg::VS_HEALTH_PCT : Cfg::HEALTH_PCT;
+        if (pct > 0 && hp_sh * 100 < pct * atk + 50) return I::bruiser_shard_of_health;
         return focus ? I::bruiser_shard_of_focus : I::bruiser_shard_of_strength;
     }
     if (Cfg::HEALTH_PCT > 0) {
@@ -598,6 +630,13 @@ float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* 
     if (g.strength <= 0.f && claims > 0) value *= Cfg::CLAIMED_PENALTY;
     else if (crew > 0) value /= static_cast<float>(1 + crew);
     if (req > 0) value *= 1.f + Cfg::SQUAD_CLAIM_BONUS * std::min(claims, req);  // converge on one squad target
+    if (Cfg::PAIRING && ranged && invaders_recent()) {  // invaders about: ranged bodies farm next to an ally
+        bool company = claims > 0;
+        for (const auto& m : mates)
+            for (auto t : g.tiles)
+                if (!company && cheb(m.pos, t) <= Cfg::PAIR_RANGE) company = true;
+        if (!company) value *= Cfg::PAIR_ALONE_MULT;
+    }
     if (paired && Cfg::PAIR_TOGETHER_BONUS > 1.f && mem[Mem::CLAIMS + partner_body] == id + 1)
         value *= Cfg::PAIR_TOGETHER_BONUS;  // the two halves fight side by side
     for (const auto& f : foes)
@@ -1125,9 +1164,17 @@ bool Bot::converge() {
     for (const auto& f : foes) {
         if (cheb(f.pos, pos) > 9) continue;
         if (Cfg::CONVERGE_FIX && enemy_spawn.is_set(f.pos)) continue;  // unreachable and healed every turn
-        bool mate_in = false;
-        for (const auto& m : mates) mate_in = mate_in || cheb(m.pos, f.pos) <= 4;
-        if (!mate_in || side_power(f.pos, true) > side_power(f.pos, false)) continue;
+        bool mate_in = false, rescue = false;
+        for (const auto& m : mates) {
+            mate_in = mate_in || cheb(m.pos, f.pos) <= 4;
+            if (Cfg::RESCUE && cheb(m.pos, f.pos) <= 2 && m.hp < 0.7f * m.max_hp) rescue = true;
+        }
+        if (rescue) {
+            int near_f = 0;
+            for (const auto& o : foes) near_f += cheb(o.pos, f.pos) <= 4 ? 1 : 0;
+            rescue = near_f <= 2 && side_power(f.pos, false) >= Cfg::RESCUE_RATIO * side_power(f.pos, true);
+        }
+        if (!mate_in || (side_power(f.pos, true) > side_power(f.pos, false) && !rescue)) continue;
         if (!best || cheb(f.pos, pos) < cheb(best->pos, pos)) best = &f;
     }
     if (!best) return false;
@@ -1144,6 +1191,15 @@ bool Bot::escape() {
     const bool lethal = burst_here * Cfg::LETHAL_MARGIN >= my_hp;
     if constexpr (Cfg::STAND_SHOOT)
         if (!acted_attack && flight_futile() && fight_enemies()) return true;
+    if constexpr (Cfg::DUEL_STAND) {
+        const Foe* lone = nullptr;
+        int near = 0;
+        for (const auto& f : foes)
+            if (f.weight >= 1.f && cheb(f.pos, pos) <= 6) ++near, lone = &f;
+        if (!acted_attack && near == 1 && !lone->ranged && cheb(lone->pos, pos) <= 2 && lone->hp <= Cfg::DUEL_HP_RATIO * my_hp
+            && flight_futile() && fight_enemies())
+            return true;
+    }
     if (me.gem_count() > 0 && !lethal && me.gem_count() <= 20)
         for (auto a : altar_tiles)
             if (cheb(a, pos) <= bc::constants::submit_gems_range && !bc::vision::has_altar_lock(a)) {
@@ -1155,16 +1211,26 @@ bool Bot::escape() {
             }
     if (!me.can_move()) return false;
     const auto blocked = blocked_now();
+    std::vector<vec2> refuge;  // FLEE_TO_ALLY: healthy allies to run to
+    if (Cfg::FLEE_TO_ALLY)
+        for (const auto& m : mates)
+            if (cheb(m.pos, pos) <= 10 && m.hp >= 0.4f * m.max_hp) refuge.push_back(m.pos);
+    auto home_of = [&](vec2 t) {
+        if (refuge.empty()) return static_cast<int>(spawn_field.get(t));
+        int d = 1 << 20;
+        for (auto r : refuge) d = std::min(d, cheb(t, r));
+        return d;
+    };
     auto pick_from = [&](const bitboard& tiles, vec2& best, float& best_b, int& best_home) {
         for (auto t : tiles.positions()) {
             const float b = burst_at(t);
-            const int home = spawn_field.get(t);
+            const int home = home_of(t);
             if (b < best_b - 1.f || (b <= best_b + 1.f && home < best_home)) best = t, best_b = b, best_home = home;
         }
     };
     vec2 best = pos;
     float best_b = burst_here;
-    int best_home = spawn_field.get(pos);
+    int best_home = home_of(pos);
     auto steps = blocked.reachable_tiles(pos, 1);
     steps.set(pos, false);
     pick_from(steps, best, best_b, best_home);
@@ -2192,6 +2258,7 @@ void Bot::play_turn() {
 
     g_stage = "threat";
     assess_threat();
+    note_invaders();
     call_help();
     g_stage = "retreat";
     if (retreat_if_hurt()) return;

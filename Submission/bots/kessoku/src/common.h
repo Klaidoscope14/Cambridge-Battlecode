@@ -145,6 +145,26 @@ inline constexpr int give_up_turns() { return LESS_WAIT ? LW_GIVE_UP_TURNS : SQU
 // stats per 150 gold vs Power's 6).
 inline constexpr bool TREASURE_FIRST = true;
 inline constexpr bool BRUISER_ITEMS = true;
+// Clear speed (top-5 builds, 2026-10-25): Vesper stacks Bruiser Strength (Fish 14 Str emblems, little Health);
+// no top team buys Monster; every top team drafts melee bruisers (Vendetta, Marcella, Heart of Ruin).
+inline constexpr bool VESPER_STR_STACK = true;
+inline constexpr int VS_HEALTH_PCT = 0;         // Vesper's Health shards per 100 Strength shards when stacking
+inline constexpr bool NO_MONSTER = false;       // skip the Monster emblem in every build
+// Fights vs melee invaders (zmarc, 2026-10-25): 69% of our deaths in losses have no ally within 4, usually one melee
+// enemy within 3; victims flee (59%), HP drains 82% -> 29% over 10 rounds, enemies near them rarely lose HP.
+inline constexpr bool DUEL_STAND = true;     // one melee chaser that reaches us anyway: shoot back instead of fleeing
+inline constexpr float DUEL_HP_RATIO = 2.0f;  // ... only if its HP is at most this times ours
+inline constexpr bool FLEE_TO_ALLY = false;   // escape() prefers tiles nearer a healthy ally within 10 over home
+inline constexpr bool RESCUE = false;         // converge() also joins a hurt ally being hit by 1-2 enemies
+inline constexpr float RESCUE_RATIO = 0.8f;   // ... when our side power there is at least this share of theirs
+// PAIRING: after any of us sees an enemy melee champion on our half (broadcast in byte 7, free while HELP_CALLS is off),
+// ranged champions value groups with no ally within PAIR_RANGE (and no ally claim) at PAIR_ALONE_MULT for PAIR_WINDOW rounds.
+inline constexpr bool PAIRING = true;
+inline constexpr int PAIR_RANGE = 5;
+inline constexpr int PAIR_WINDOW = 80;
+inline constexpr float PAIR_ALONE_MULT = 0.25f;
+inline constexpr bool PAIR_BRUISERS_ONLY = false;  // trigger only on Marcella, Heart of Ruin, Ryth, Vendetta
+inline constexpr int MELEE_OPENER = 0;          // third forced opener: 0 Willow, 1 Vendetta, 2 Marcella
 // Enemy threat.
 inline constexpr float LETHAL_MARGIN = 1.15f;  // retreat when visible burst * this reaches our HP
 inline constexpr float DANGER_TILE = 0.60f;    // avoid tiles whose burst exceeds this share of HP

@@ -1,6 +1,6 @@
 # How to submit (CAMBC 2026)
 
-`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v36all = v35 + LESS_WAIT, TREASURE_FIRST and BRUISER_ITEMS, also frozen as `bots/v36all`; `bots/v36` is the same source with the three switches off (= v35); `bots/v35`, `bots/v31` and `bots/v28` are rollbacks).
+`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v40pr = v36all + VESPER_STR_STACK + DUEL_STAND + PAIRING, also frozen as `bots/v40pr`; `bots/v40` is the same source with PAIRING off; `bots/v36all`, `bots/v35`, `bots/v31` and `bots/v28` are rollbacks). Adversary `bots/zmarc` reproduces the ladder's Marcella-invader losses.
 Ladder team: **HighCortisol** (team id `58271d23-d86a-48de-987a-5d82c983d7db`).
 
 ## Where the submission zip lives
@@ -41,6 +41,18 @@ Opponent set: `zgank` (ladder-style: dive draft, Bruiser items, chases weakened 
 deaths, v28 44/80), the field `zmeta zpoke zhor zrush zdive0` (sum over the five is the main local number),
 `zlock2` (altar locks), `zcamp` (altar campers), `starter-cpp`, `starter-python`.
 Debug traces: `cambc run-batch --log-limit 30000000 manifest.txt` keeps long stdout logs.
+
+## Fast A/B on AWS (`tools/aws_runner.py`)
+A 192-vCPU spot instance (c7i.48xlarge, ap-south-1, ~$1.6/h) plays ~800 games in 45 s, bit-identical to the Mac.
+One command launches it, syncs `Submission/`, builds the bots, runs `tools/sprt.py`, copies the results into the local
+sprt cache and terminates the instance (also on errors); a full small A/B takes ~1.5 minutes end to end. Needs `aws login`.
+```bash
+python3 tools/aws_runner.py ab v40pr v36all zmarc,zgank,zmeta --max 240 --alpha 1e-9 --beta 1e-9
+python3 tools/aws_runner.py batch tests.txt          # one "VARIANT BASE OPPS [sprt args]" per line
+python3 tools/aws_runner.py status                   # make sure nothing is left running
+```
+`--keep` leaves the instance up between runs (then `python3 tools/aws_runner.py down`); every instance powers itself off
+after `MAX_MINUTES` (default 120). Analysis scripts that read the sprt cache see the results as if run locally.
 
 ## Ladder data
 ```bash
