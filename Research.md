@@ -52,6 +52,7 @@ v47h25 on panel B: 11/20 (0/5 vs Dota2, 4/5 vs each of the other three).
 | v45sq (ladder v35) | **3/20** (arena x2, lanes vs Crimson) | 898 / 1497 | 22.0 / 6.0 | - | 12 of 20 games identical to v34 (the fix only acts on starfish). Starfish still 0/4 but camp deaths 15.5 -> 3.0 per game and we collect 498 vs 268; the remaining 30 deaths a game there are champion kills. Kept live |
 | v46gc (ladder v36) | **5/20** (eight vs lETHal, lanes vs Crimson, arena x3) | 1002 / 1371 | 19.9 / 7.3 | - | elkring still 0/4 and starfish 0/4; camp deaths 1.4/game; general rules, no map gates. Kept live. Run with `python3 tools/panel.py run LABEL` |
 | v47h25 (ladder v37) | panel A 4/20 (v46gc 5/20); **held-out panel B 11/20** | 1015 / 1309 | 21.1 / 5.8 | - | + HP_RATIO_GUARD: outmatched when visible enemy HP within 6 > 2.5x ours (us + allies within 6) and an enemy is within 5. From v46gc panel replays: death within 10 rounds 4% at <=1x, 26% at 1.5-2.5x, 43% above 2.5x; our deaths had enemy HP > 1.5x in 62% vs their 35%. Local vs v46gc over 820 games +93 -59 (field win rate 79.9% vs 75.3%, deaths 8.3 vs 9.6/game); panel maps 109 vs 108. K 2.0 similar (+99 -64, panel maps 105 vs 108) |
+| v52pa (ladder v38) | panel A **8/20** (best yet; +5 -1 vs v47h25); **held-out panel B 6/20** (v47h25 11/20; +1 -6) | A 1048 / 1297, B 726 / 993 | A 17.1 / 7.8, B 17.1 / 7.2 | - | v47h25 + PAIR_ANYWHERE. Combined 14/40 vs 15/40: level overall, but the accept/reject panel says worse. B's lost games are mostly low-death race games (fracture, islands, the_pack, crossing): farming next to an ally costs tempo. Deaths A 21.1 -> 17.1, B 14.3 -> 17.1 |
 
  (2026-10-25)
 
@@ -244,6 +245,23 @@ Ordered by current priority.
     alone only slowed games we already led; needs a lock-breaking / sitter-killing adversary to test.
 
 ---
+
+### v52pa on the ranked ladder (ladder v38, first 50 games, 2026-10-26)
+
+25/50. Opponents 1,647-1,713 (mean 1,677; us 1,659): 21/45 vs higher-rated. 40 maps in 50 games, so per-map rates are
+1-2 games each. 17 maps lost every time: 02fields, 02treasure_box, adgato_gemcombat4 (0/2 each), 01shortcut,
+adgato_gemcombat1, 00expanse, 02arena, 00the_line, 01fracture, 00contest, 00anvil, 02stalactites, 00corners,
+00elkring, 01big_world, 02gift_wrapping, 02famine.
+- **How we lose there (20 games, half fight / half race):** the enemy clears 56 camps to our 32, tributes 38.5 times
+  to our 15.6 (27 vs 33 gems per tribute) and loses 28 gems to deaths against our 149; gold@600 1,383 vs 2,664.
+  Race losses: few deaths (7.7 vs 3.0) but clears 29 vs 56 and gold@600 1,952 vs 3,173 - they simply farm faster.
+  Fight losses: deaths 32 vs 4, kills 3 vs 31.
+- **Their openers in those games:** Power Focus/Strength, Jungle Strength/Focus, Durability Health and Home Health
+  before r400; teams we beat buy Treasure/Bruiser Strength like us. Our openers: Treasure Strength 7.5, Jungle Health
+  6.2, Treasure Health 4.2 per game. Enemy drafts in those losses: more Marcella (65% vs 48%) and Heart (55% vs 36%).
+- **Map structure explains little** (v37+v38, 145 games, weighted correlation with map win rate all |r| <= 0.26):
+  losing maps have more monster-free cluster gems (r -0.26 on v38), more monoliths, fewer elk gems (r +0.18), fewer
+  walls (r +0.21) and fewer equidistant (contested) gems.
 
 ### The 30 new maps (2026-10-26)
 
