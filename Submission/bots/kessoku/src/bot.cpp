@@ -294,6 +294,26 @@ void Bot::observe() {
 
     visible_now = bc::vision::visible_tiles();
     const auto& visible = visible_now;
+    if constexpr (Cfg::BIG_GROUP_FULL_HP) {
+        if (big_trap.empty()) {
+            big_trap.assign(groups.size(), 0);
+            for (std::size_t i = 0; i < groups.size(); ++i) {
+                const auto& g = groups[i];
+                if (g.monolith || g.camp_count < Cfg::BG_MIN_CAMPS || g.strength < Cfg::BG_MIN_STR) continue;
+                int alt = 1 << 20;
+                for (auto t : g.tiles)
+                    for (auto a : tribute_tiles) alt = std::min(alt, cheb(t, a));
+                big_trap[i] = alt <= Cfg::BG_ALTAR_D ? 1 : 0;
+            }
+        }
+        for (std::size_t i = 0; i < groups.size(); ++i) {
+            const auto& g = groups[i];
+            if (!big_trap[i] || live_hp[i] < 0.f) continue;
+            int unseen = 0;
+            for (auto t : g.tiles) unseen += visible.is_set(t) ? 0 : 1;
+            live_hp[i] += static_cast<float>(unseen) * g.hp / static_cast<float>(g.camp_count);
+        }
+    }
     // A group whose every tile is beyond our vision radius cannot be seen (we place no
     // wards), so skip the per-tile test. Geometry is static: filled on first use.
     if constexpr (Cfg::OBS_SKIP_FAR) {
@@ -563,6 +583,31 @@ float Bot::group_hp(int id) const {
     return seen >= 0.f ? seen : groups[static_cast<std::size_t>(id)].hp;
 }
 
+// LETHAL_FULL_HP / RICH_SQUAD bookkeeping; runs after estimate_dps() so helpers_for() has our damage.
+void Bot::apply_lethal_hp() {
+    if (Cfg::RICH_SQUAD && rich.empty()) {
+        std::vector<int> gems;
+        for (const auto& g : groups)
+            if (!g.monolith && g.gems > 0) gems.push_back(g.gems);
+        rich.assign(groups.size(), 0);
+        if (!gems.empty()) {
+            std::nth_element(gems.begin(), gems.begin() + static_cast<std::ptrdiff_t>(gems.size() / 2), gems.end());
+            const float median = static_cast<float>(gems[gems.size() / 2]);
+            for (std::size_t i = 0; i < groups.size(); ++i)
+                rich[i] = !groups[i].monolith && groups[i].strength > 0.f && groups[i].gems >= Cfg::RICH_MULT * median ? 1 : 0;
+        }
+    }
+    if (!Cfg::LETHAL_FULL_HP || dps_single <= 0.f || dps_multi <= 0.f) return;
+    for (std::size_t i = 0; i < groups.size(); ++i) {
+        const auto& g = groups[i];
+        if (live_hp[i] < 0.f || g.monolith || g.strength <= 0.f || g.camp_count < 2) continue;
+        int unseen = 0;
+        for (auto t : g.tiles) unseen += visible_now.is_set(t) ? 0 : 1;
+        if (unseen == 0 || helpers_for(g, g.hp) == 0) continue;  // soloable at full strength: keep what we see
+        live_hp[i] += static_cast<float>(unseen) * g.hp / static_cast<float>(g.camp_count);
+    }
+}
+
 int Bot::claims_on(int id) const {
     int n = 0;
     for (int b = 0; b < Mem::MAX_BODIES; ++b)
@@ -572,10 +617,11 @@ int Bot::claims_on(int id) const {
 
 // Fewest allies that must fight beside us for the group to be safe; -1 if never.
 // Incoming damage scales with 1 / (1 + helpers), so solve for helpers directly.
-int Bot::required_helpers(const Group& g) const {
+int Bot::required_helpers(const Group& g) const { return helpers_for(g, group_hp(static_cast<int>(&g - groups.data()))); }
+
+int Bot::helpers_for(const Group& g, float hp) const {
     if (g.strength <= 0.f) return 0;
     const float taken = has_jungle ? Cfg::JUNGLE_TAKEN : 1.f;
-    const float hp = group_hp(static_cast<int>(&g - groups.data()));
     if (g.monolith) {
         // Pooled: (1 + h) bodies each absorb a share of their health, and the
         // fight is (1 + h) times shorter, so (1 + h)^2 >= total / pool.
@@ -594,9 +640,11 @@ int Bot::required_helpers(const Group& g) const {
     }
     if (Cfg::POOLED_SQUADS && g.camp_count > 1) {
         // Tanks rotate out when hurt, so the squad shares the damage: (1+h)^2 >= solo / pool.
-        const float pool = Cfg::SQUAD_POOL_SHARE * my_max;
+        const bool team = team_squad(static_cast<int>(&g - groups.data()));
+        const float pool = (team ? Cfg::BG_POOL_SHARE : Cfg::SQUAD_POOL_SHARE) * my_max;
         const int h = std::max(1, static_cast<int>(std::ceil(std::sqrt(solo / pool))) - 1);
-        if (h < bodies && h <= Cfg::SQUAD_POOL_MAX_HELPERS && (best < 0 || h < best)) best = h;
+        const int cap = team ? bodies - 1 : Cfg::SQUAD_POOL_MAX_HELPERS;
+        if (h < bodies && h <= cap && (best < 0 || h < best)) best = h;
     }
     return best;
 }
@@ -832,7 +880,7 @@ int Bot::choose_target() {
 
     // Squad deadlock breaker: after waiting a while, join whichever squad target
     // has the most committed allies; after waiting too long, give up on it.
-    if (best >= 0 && best == target && best_req > 0 && wait_turns > Cfg::regroup_turns()) {
+    if (best >= 0 && best == target && best_req > 0 && wait_turns > Cfg::regroup_turns() * (team_squad(best) ? Cfg::BG_WAIT_MULT : 1)) {
         int join = -1, join_claims = claims_on(best), join_req = 0;
         for (std::size_t i = 0; i < groups.size(); ++i) {
             const int id = static_cast<int>(i);
@@ -846,7 +894,7 @@ int Bot::choose_target() {
         }
         if (join >= 0) {
             best = join, best_req = join_req, wait_turns = 0;
-        } else if (wait_turns > Cfg::give_up_turns()) {
+        } else if (wait_turns > Cfg::give_up_turns() * (team_squad(best) ? Cfg::BG_WAIT_MULT : 1)) {
             groups[static_cast<std::size_t>(best)].skip_until = round + 40;
             best = -1, best_req = 0, wait_turns = 0;
         }
@@ -984,6 +1032,14 @@ void Bot::assess_threat() {
         } else {
             outmatched = false;
         }
+    }
+    if (Cfg::HP_RATIO_GUARD && nearest <= Cfg::HR_RANGE && !outmatched) {
+        float theirs = 0.f, ours = my_hp;
+        for (const auto& f : foes)
+            if (f.weight >= 1.f && cheb(f.pos, pos) <= 6) theirs += f.hp;
+        for (const auto& m : mates)
+            if (cheb(m.pos, pos) <= 6) ours += m.hp;
+        if (theirs > Cfg::HR_K * ours) outmatched = true;
     }
     if (Cfg::FIGHT_SIM_OUTMATCHED && nearest <= Cfg::SKIRMISH_RANGE) {
         const auto f = simulate_fight(pos, Cfg::FIGHT_SIM_ROUNDS, false);
@@ -1881,6 +1937,7 @@ bool Bot::should_bank() const {
         threshold = std::min(threshold, Cfg::AHEAD_BANK_BAG);
     if (standing < 0) threshold = std::max(threshold, Cfg::BEHIND_BANK_BAG);
     if (Cfg::PVP_BANKING && round - last_foe_round <= Cfg::PVP_RECENT_ROUNDS) threshold = std::min(threshold, Cfg::PVP_BANK_BAG);
+    if (Cfg::CARRY_RISK && round - last_foe_round <= Cfg::CR_ROUNDS) threshold = std::min(threshold, Cfg::CR_BAG);
     if (bag >= threshold) return true;
     if (!(Cfg::DETOUR_BANKING && Cfg::DETOUR_REPLACES_NEAR) && altar_field.get(pos) <= Cfg::BANK_NEAR_DIST) return true;
     if (Cfg::DETOUR_BANKING && bag >= Cfg::DETOUR_MIN_BAG && round - detour_round <= Cfg::RETARGET_EVERY
@@ -2221,6 +2278,7 @@ void Bot::play_turn() {
     }
     g_stage = "dps";
     estimate_dps();
+    if constexpr (Cfg::LETHAL_FULL_HP || Cfg::RICH_SQUAD) apply_lethal_hp();
     g_stage = "memory";
     read_memory();
     g_stage = "capture";

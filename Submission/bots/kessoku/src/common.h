@@ -160,6 +160,36 @@ inline constexpr float RESCUE_RATIO = 0.8f;   // ... when our side power there i
 // PAIRING: after any of us sees an enemy melee champion on our half (broadcast in byte 7, free while HELP_CALLS is off),
 // ranged champions value groups with no ally within PAIR_RANGE (and no ally claim) at PAIR_ALONE_MULT for PAIR_WINDOW rounds.
 inline constexpr bool PAIRING = true;
+// BIG_GROUP_FULL_HP (01starfish side B: 13-24 deaths a game to the 14-camp centre elk group). live_hp sums only the
+// camps we see, so a huge group seen at its edge looks soloable. For groups with >= BG_MIN_CAMPS fighting camps and
+// strength >= BG_MIN_STR, count every unseen camp tile at full health. The gate is strict so ordinary maps are unchanged.
+inline constexpr bool BIG_GROUP_FULL_HP = false;
+inline constexpr int BG_MIN_CAMPS = 10;
+inline constexpr float BG_MIN_STR = 300.f;
+inline constexpr int BG_ALTAR_D = 0;
+// BIG_GROUP_SQUAD: that group is worth taking as a team, not avoiding (118 gems on starfish): up to bodies-1 helpers,
+// damage pooled at BG_POOL_SHARE of max health, and BG_WAIT_MULT x the regroup/give-up clocks while the squad gathers.
+inline constexpr bool BIG_GROUP_SQUAD = false;
+inline constexpr float BG_POOL_SHARE = 0.9f;
+inline constexpr int BG_WAIT_MULT = 3;
+// General versions (2026-10-26; no map-specific gates):
+// LETHAL_FULL_HP: a partly seen group counts its unseen camps at full health when the group at full strength would
+// need helpers (soloable groups keep the visible-only estimate, so ordinary farming is unchanged).
+inline constexpr bool LETHAL_FULL_HP = true;
+// RICH_SQUAD: any group worth >= RICH_MULT x the map's median group gems may be taken by the whole team
+// (pool BG_POOL_SHARE, up to bodies-1 helpers, BG_WAIT_MULT x squad clocks).
+inline constexpr bool RICH_SQUAD = true;
+inline constexpr float RICH_MULT = 3.f;
+// CARRY_RISK: band teams lose 3.6-5.9 gems per death, we lose 10.6. Within CR_ROUNDS of seeing an enemy champion, bank at CR_BAG.
+inline constexpr bool CARRY_RISK = true;
+inline constexpr int CR_ROUNDS = 150;
+inline constexpr int CR_BAG = 20;
+// HP_RATIO_GUARD (v46gc panel replays, 4,428 samples of our champions near enemies): death within 10 rounds is 4% when
+// the visible enemy HP within 6 tiles is <= ours (us + allies within 6), 26% at 1.5-2.5x and 43% above 2.5x. Treat
+// enemy HP > HR_K x ours with an enemy within HR_RANGE as outmatched.
+inline constexpr bool HP_RATIO_GUARD = true;
+inline constexpr float HR_K = 2.5f;
+inline constexpr int HR_RANGE = 5;  // ... and an altar tribute tile this close (only starfish's centre group on the 70-map pool)
 inline constexpr int PAIR_RANGE = 5;
 inline constexpr int PAIR_WINDOW = 80;
 inline constexpr float PAIR_ALONE_MULT = 0.25f;

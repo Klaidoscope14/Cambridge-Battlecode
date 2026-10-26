@@ -115,6 +115,13 @@ class Bot {
     float my_hp = 0.f, my_max = 1.f;
     bool has_monster = false, has_jungle = false;  // camp-fighting emblem passives owned
     std::vector<float> live_hp;     // visible living camp health per group, -1 if unseen
+    std::vector<char> big_trap;     // BIG_GROUP_FULL_HP: group passes the gate (computed once)
+    std::vector<char> rich;          // RICH_SQUAD: group worth a whole-team squad (computed once)
+    bool is_rich(int id) const { return id >= 0 && static_cast<std::size_t>(id) < rich.size() && rich[static_cast<std::size_t>(id)]; }
+    bool team_squad(int id) const { return (Cfg::BIG_GROUP_SQUAD && is_big_trap(id)) || (Cfg::RICH_SQUAD && is_rich(id)); }
+    int helpers_for(const Group& g, float hp) const;
+    void apply_lethal_hp();
+    bool is_big_trap(int id) const { return id >= 0 && static_cast<std::size_t>(id) < big_trap.size() && big_trap[static_cast<std::size_t>(id)]; }
     std::vector<vec2> enemy_pos;
     std::vector<Foe> foes;
     std::vector<bitboard> altar_sq;   // static: tribute squares per altar

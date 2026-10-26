@@ -166,6 +166,12 @@ inline constexpr bool PAIRING = true;
 inline constexpr bool BIG_GROUP_FULL_HP = false;
 inline constexpr int BG_MIN_CAMPS = 10;
 inline constexpr float BG_MIN_STR = 300.f;
+inline constexpr int BG_ALTAR_D = 0;
+// BIG_GROUP_SQUAD: that group is worth taking as a team, not avoiding (118 gems on starfish): up to bodies-1 helpers,
+// damage pooled at BG_POOL_SHARE of max health, and BG_WAIT_MULT x the regroup/give-up clocks while the squad gathers.
+inline constexpr bool BIG_GROUP_SQUAD = false;
+inline constexpr float BG_POOL_SHARE = 0.9f;
+inline constexpr int BG_WAIT_MULT = 3;  // ... and an altar tribute tile this close (only starfish's centre group on the 70-map pool)
 inline constexpr int PAIR_RANGE = 5;
 inline constexpr int PAIR_WINDOW = 80;
 inline constexpr float PAIR_ALONE_MULT = 0.25f;

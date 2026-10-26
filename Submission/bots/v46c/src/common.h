@@ -166,6 +166,24 @@ inline constexpr bool PAIRING = true;
 inline constexpr bool BIG_GROUP_FULL_HP = false;
 inline constexpr int BG_MIN_CAMPS = 10;
 inline constexpr float BG_MIN_STR = 300.f;
+inline constexpr int BG_ALTAR_D = 0;
+// BIG_GROUP_SQUAD: that group is worth taking as a team, not avoiding (118 gems on starfish): up to bodies-1 helpers,
+// damage pooled at BG_POOL_SHARE of max health, and BG_WAIT_MULT x the regroup/give-up clocks while the squad gathers.
+inline constexpr bool BIG_GROUP_SQUAD = false;
+inline constexpr float BG_POOL_SHARE = 0.9f;
+inline constexpr int BG_WAIT_MULT = 3;
+// General versions (2026-10-26; no map-specific gates):
+// LETHAL_FULL_HP: a partly seen group counts its unseen camps at full health when the group at full strength would
+// need helpers (soloable groups keep the visible-only estimate, so ordinary farming is unchanged).
+inline constexpr bool LETHAL_FULL_HP = false;
+// RICH_SQUAD: any group worth >= RICH_MULT x the map's median group gems may be taken by the whole team
+// (pool BG_POOL_SHARE, up to bodies-1 helpers, BG_WAIT_MULT x squad clocks).
+inline constexpr bool RICH_SQUAD = false;
+inline constexpr float RICH_MULT = 3.f;
+// CARRY_RISK: band teams lose 3.6-5.9 gems per death, we lose 10.6. Within CR_ROUNDS of seeing an enemy champion, bank at CR_BAG.
+inline constexpr bool CARRY_RISK = true;
+inline constexpr int CR_ROUNDS = 150;
+inline constexpr int CR_BAG = 20;  // ... and an altar tribute tile this close (only starfish's centre group on the 70-map pool)
 inline constexpr int PAIR_RANGE = 5;
 inline constexpr int PAIR_WINDOW = 80;
 inline constexpr float PAIR_ALONE_MULT = 0.25f;

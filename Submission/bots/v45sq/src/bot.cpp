@@ -101,22 +101,6 @@ void Bot::init() {
     altar_field.compute(terrain, tribute, visited);
     bitboard visited2;
     spawn_field.compute(terrain, ally_spawn, visited2);
-    if (body == 0 || true) {
-        static bool done = false;
-        if (!done && kind == bc::champion_type::vesper_vale) {
-            done = true;
-            for (std::size_t i = 0; i < groups.size(); ++i) {
-                const auto& g = groups[i];
-                if (g.camp_count < 6 || g.strength < 150.f) continue;
-                int fighting = 0;
-                for (const auto& c : bc::map::camp_groups()[i].camps()) fighting += (c.is_wolf() || c.is_elk()) ? 1 : 0;
-                int alt = 99;
-                for (auto t : g.tiles) for (auto a : tribute_tiles) alt = std::min(alt, cheb(t, a));
-                std::cout << "BG g" << i << " camps=" << g.camp_count << " fight=" << fighting << " str=" << g.strength << " hp=" << g.hp
-                          << " gems=" << g.gems << " altar_d=" << alt << " mono=" << g.monolith << std::endl;
-            }
-        }
-    }
 
     int all_gems = 0, mono_gems = 0;
     if (Cfg::MONOLITH_WHEN_DOMINANT || Cfg::DASH_ISLANDS)  // skip the setup cost when both are off
@@ -311,9 +295,20 @@ void Bot::observe() {
     visible_now = bc::vision::visible_tiles();
     const auto& visible = visible_now;
     if constexpr (Cfg::BIG_GROUP_FULL_HP) {
+        if (big_trap.empty()) {
+            big_trap.assign(groups.size(), 0);
+            for (std::size_t i = 0; i < groups.size(); ++i) {
+                const auto& g = groups[i];
+                if (g.monolith || g.camp_count < Cfg::BG_MIN_CAMPS || g.strength < Cfg::BG_MIN_STR) continue;
+                int alt = 1 << 20;
+                for (auto t : g.tiles)
+                    for (auto a : tribute_tiles) alt = std::min(alt, cheb(t, a));
+                big_trap[i] = alt <= Cfg::BG_ALTAR_D ? 1 : 0;
+            }
+        }
         for (std::size_t i = 0; i < groups.size(); ++i) {
             const auto& g = groups[i];
-            if (live_hp[i] < 0.f || g.monolith || g.camp_count < Cfg::BG_MIN_CAMPS || g.strength < Cfg::BG_MIN_STR) continue;
+            if (!big_trap[i] || live_hp[i] < 0.f) continue;
             int unseen = 0;
             for (auto t : g.tiles) unseen += visible.is_set(t) ? 0 : 1;
             live_hp[i] += static_cast<float>(unseen) * g.hp / static_cast<float>(g.camp_count);
@@ -619,9 +614,11 @@ int Bot::required_helpers(const Group& g) const {
     }
     if (Cfg::POOLED_SQUADS && g.camp_count > 1) {
         // Tanks rotate out when hurt, so the squad shares the damage: (1+h)^2 >= solo / pool.
-        const float pool = Cfg::SQUAD_POOL_SHARE * my_max;
+        const bool team = Cfg::BIG_GROUP_SQUAD && is_big_trap(static_cast<int>(&g - groups.data()));
+        const float pool = (team ? Cfg::BG_POOL_SHARE : Cfg::SQUAD_POOL_SHARE) * my_max;
         const int h = std::max(1, static_cast<int>(std::ceil(std::sqrt(solo / pool))) - 1);
-        if (h < bodies && h <= Cfg::SQUAD_POOL_MAX_HELPERS && (best < 0 || h < best)) best = h;
+        const int cap = team ? bodies - 1 : Cfg::SQUAD_POOL_MAX_HELPERS;
+        if (h < bodies && h <= cap && (best < 0 || h < best)) best = h;
     }
     return best;
 }
@@ -857,7 +854,7 @@ int Bot::choose_target() {
 
     // Squad deadlock breaker: after waiting a while, join whichever squad target
     // has the most committed allies; after waiting too long, give up on it.
-    if (best >= 0 && best == target && best_req > 0 && wait_turns > Cfg::regroup_turns()) {
+    if (best >= 0 && best == target && best_req > 0 && wait_turns > Cfg::regroup_turns() * (Cfg::BIG_GROUP_SQUAD && is_big_trap(best) ? Cfg::BG_WAIT_MULT : 1)) {
         int join = -1, join_claims = claims_on(best), join_req = 0;
         for (std::size_t i = 0; i < groups.size(); ++i) {
             const int id = static_cast<int>(i);
@@ -871,7 +868,7 @@ int Bot::choose_target() {
         }
         if (join >= 0) {
             best = join, best_req = join_req, wait_turns = 0;
-        } else if (wait_turns > Cfg::give_up_turns()) {
+        } else if (wait_turns > Cfg::give_up_turns() * (Cfg::BIG_GROUP_SQUAD && is_big_trap(best) ? Cfg::BG_WAIT_MULT : 1)) {
             groups[static_cast<std::size_t>(best)].skip_until = round + 40;
             best = -1, best_req = 0, wait_turns = 0;
         }

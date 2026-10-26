@@ -32,14 +32,26 @@ Version names are internal (the ladder numbers its uploads one lower until v28: 
 
 ## 0b. Real-opponent panel (release loop, 2026-10-26)
 
-Workflow: limited local A/B vs the live bot -> user uploads -> 4 unranked match groups against the fixed panel in
+Workflow: limited local A/B vs the live bot -> user uploads -> `python3 tools/panel.py run LABEL` (4 unranked match groups against the fixed panel in
 `Submission/tools/data/panel.json` (teams rated +100..+150 above us; same opponent versions via --source-group, maps
-00eight, 00elkring, 00lanes, 01starfish, 02arena, sides a,b,a,b,a) -> keep (target 40-60% wins) or roll back.
+00eight, 00elkring, 00lanes, 01starfish, 02arena, sides a,b,a,b,a; prints a side-by-side table of all runs) -> keep
+(target 40-60% wins) or roll back.
 These maps are our known weak spots, so the panel is a hard test.
+
+**Evaluation protocol (2026-10-26, against overfitting).** Panel A (above) is the *diagnostic* panel: we study its
+replays to find problems, so it cannot judge fixes derived from it. Panel B (`tools/data/panel_holdout.json`) is
+**held out**: 4 other band teams (Dota2 is better than LOL, team, Alpha pekka, Sic Mundus Creatus Est), 5 maps each
+drawn at random from the pool minus panel A's maps (20 distinct team-map pairs), never used to design fixes, only to
+accept or reject versions (`python3 tools/panel.py --panel tools/data/panel_holdout.json run LABEL`). The final judge
+is ranked ladder play over 100+ games (`tools/ladder_compare.py`). Refresh panel B's teams when our rating band moves.
+v47h25 on panel B: 11/20 (0/5 vs Dota2, 4/5 vs each of the other three).
 
 | Version | Panel wins | gold@300 us/them | deaths us/them | traded | notes |
 |---|---|---|---|---|---|
 | v40pr (ladder v34, us 1650) | **2/20** (both on 02arena) | 920 / 1475 | 22.9 / 6.2 | 7% | starfish side B: 30-55 deaths, 13-24 of them to camps; elkring: we collect 240-680 vs 1,000+; Vendetta, Prism, Ren, Marcella top killers |
+| v45sq (ladder v35) | **3/20** (arena x2, lanes vs Crimson) | 898 / 1497 | 22.0 / 6.0 | - | 12 of 20 games identical to v34 (the fix only acts on starfish). Starfish still 0/4 but camp deaths 15.5 -> 3.0 per game and we collect 498 vs 268; the remaining 30 deaths a game there are champion kills. Kept live |
+| v46gc (ladder v36) | **5/20** (eight vs lETHal, lanes vs Crimson, arena x3) | 1002 / 1371 | 19.9 / 7.3 | - | elkring still 0/4 and starfish 0/4; camp deaths 1.4/game; general rules, no map gates. Kept live. Run with `python3 tools/panel.py run LABEL` |
+| v47h25 (ladder v37) | panel A 4/20 (v46gc 5/20); **held-out panel B 11/20** | 1015 / 1309 | 21.1 / 5.8 | - | + HP_RATIO_GUARD: outmatched when visible enemy HP within 6 > 2.5x ours (us + allies within 6) and an enemy is within 5. From v46gc panel replays: death within 10 rounds 4% at <=1x, 26% at 1.5-2.5x, 43% above 2.5x; our deaths had enemy HP > 1.5x in 62% vs their 35%. Local vs v46gc over 820 games +93 -59 (field win rate 79.9% vs 75.3%, deaths 8.3 vs 9.6/game); panel maps 109 vs 108. K 2.0 similar (+99 -64, panel maps 105 vs 108) |
 
  (2026-10-25)
 
@@ -65,6 +77,7 @@ These maps are our known weak spots, so the panel is a hard test.
 | v35 | + reverse_spiral standoff fix | | 243-243 vs v31 |
 | v36all | + LESS_WAIT, TREASURE_FIRST, BRUISER_ITEMS (ladder "v32", live from 09:40 UTC 25 Oct) | 32-23 (58%) over 55 games, 09:40-11:20 UTC (first 25: 18-7) | 259 vs 243 (320 paired) |
 | v40pr | + VESPER_STR_STACK + DUEL_STAND + PAIRING (ladder "v33", live from 11:30 UTC 25 Oct) | 3-2 after 5 games | vs v36all on 11 bots 746 vs 720 (+78 -52); head to head 47 vs 40; zmarc 51 vs 43 (vs v39ds) |
+| v45sq | + BIG_GROUP_FULL_HP + BIG_GROUP_SQUAD (starfish centre group only), ladder "v35" from 26 Oct | panel 3/20 (v34 2/20) | starfish 23 vs 23 vs 12 bots with deaths 21 vs 31 on side B; other maps noise only |
 
 ---
 
@@ -187,7 +200,17 @@ willow best girl, Claudus Maximus and Trzy Kwaterki (250 games), 40 replays prof
 - So the economy constraint is relieved in most games; in losses the binding constraint is now fights against
   stun-immune melee invaders (section 5 item 2).
 
-## 5. Open ideas (not yet built or not yet conclusive)
+### Band opponents vs us on engine 2.0 (2026-10-26; 4 panel teams x 20 recent ranked games, our 30)
+
+- Deaths per game: them 4.0-17.9 (the uncancelables 4.0), us 20.4. Gems lost per death: them 3.6-5.9, us 10.6.
+  Median bag: them 19-28, us 34. We collect the most gems by r300 (218 vs 139-187) and lose them in deaths.
+- Drafts split into melee-bruiser teams (Heart, Marcella, Ryth, Ren, Vendetta; Jungle first, then Power emblems) and
+  ranged teams (Tavi, Vesper, Prism, Willow; Bruiser or Treasure first). Altar locks 0-10 a game; wards 94-522.
+- 00elkring replays (engine-2 reader: champion stride 420, camps at 6916): we spend 22-38% of rounds 0-400 on the
+  enemy half (identical groups on both halves, our bodies spread to distinct groups), die there 18-54% of the time,
+  carry 13-20 gem bags; they stay home, tribute every 22-44 gem capture, and keep 110-154 camp gems / 100 rounds.
+
+ (not yet built or not yet conclusive)
 
 Ordered by current priority.
 1. **More early economy**: smaller bags, earlier shopping, dropping Monster and melee openers were measured and rejected
@@ -291,6 +314,7 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 | `FLEE_TO_ALLY` (escape toward the nearest healthy ally instead of home), on v38vs0 | zmarc 43 vs 38 but field 254 vs 267 (+16 -29) |
 | `RESCUE` (converge on a hurt ally hit by 1-2 enemies at side power >= 0.8) | fires rarely: 38 vs 38, 268 vs 267 |
 | `DUEL_STAND` wide (HP ratio 3, chaser within 3) | 307 vs 305 over zmarc + field |
+| `HR_CAMP_K` 1.5 / 2.0 (HP-ratio guard trips at a lower ratio while an awake camp is within 3), on v47h25 | 189 vs 191 and 361 vs 360 (1.5); 187 vs 191 and 360 vs 360 (2.0) over 700 games: neutral locally (local bots do not invade early like the meta teams) |
 | `PAIRING` variants on v39ds (720 games on 9 bots each): mult 0.5 / 0.1, window 40 / 160, bruisers-only trigger | 563-570 vs 570: neutral |
 | `STUN_CHASER` (stun a non-Marcella melee enemy within 2 of us or next to a hurt ally; stun before escaping), on v40pr | 794 vs 786 over 12 opponents (+41 -33); zmarc 52 vs 51, deaths unchanged: neutral |
 | `STUN_RESERVE` (no stuns on camps while enemies were seen in the last 30 rounds) | 778 vs 786; zmarc 46 vs 51 (+5 -14): worse |
@@ -298,6 +322,8 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 | `WARD_AHEAD` (re-place ward each turn on the tile nearest the enemy spawn; ~300-550 wards/game), on v40pr | 759 vs 786 (+83 -110) |
 | `WARD_POST` (ward on the enemy-facing side of each new target, kept until the target changes) | 768 vs 786 (+88 -106) |
 | Patch build orders on engine 2.0.0 (`ITEM_PLAN`, dev bots/v43; 420 games each vs v40pr on 70 maps x zgank/zmarc/zmeta): 1 Capture-Treasure-Jungle-Monster 299 vs 293 (+45 -39); 2 Treasure-Capture-Jungle-Monster 292; 3 Monster-Jungle (no Treasure) 293, gold@300 -31; 4 Monster-Treasure-Jungle 297; 5 + Tribute 4th 285 (+21 -29); 6 Capture-Treasure-Tribute-Jungle-Monster 290; 7 Capture-Monster-Jungle 288 | none beats Treasure-Jungle-Monster; Treasure still pays at 10%; Tribute hurts |
+| `BIG_GROUP_FULL_HP` (count unseen camps at full HP only for groups with >= 10 camps, strength >= 300 and an altar inside; on the 70-map pool that is only starfish's centre group; dev bots/v45, candidate bots/v45bg) | starfish side B: camp deaths 17.4 -> 5.1/game, all deaths 30.9 -> 15.8, but wins 12/13 -> 9/12 (two games lost the farming race); side A unchanged; other maps flat (zgank 88 vs 86, zmeta 126 vs 125 over 140 each). Not clearly better than v40pr locally: not handed over |
+| + `BIG_GROUP_SQUAD` (take that group as a team: up to bodies-1 helpers, pool 0.9, 3x squad clocks; bots/v45sq) | starfish vs 12 opponents: side B 11/12 (v40pr 12/13), deaths 21.0 vs 30.9, camp deaths 6.3 vs 17.4, collected 1174 vs 1144; side A 12/12; starfish total 23 vs 23. Other maps (gate never fires) differ only by fuel-timing noise: 13 vs 20 discordant over 420 games vs zgank/zmeta/zmarc. Locally even with v40pr; its target is the ladder, where v40pr went 0/4 on starfish against the panel |
 | `MOVE_SCORER` (food-postmortem style 9-tile scoring in skirmishes: threat/HP, hit and kill bonus, ally support, home pull, numbers-scaled threat; dev bots/v44), focus set 8 pick-off maps x zmarc/zgank, 32 games vs v40pr (21) | v1 10 (+1 -12; zmarc 1/16, deaths 23 vs 9); + only-when-threatened and lethal-tile guards 15 (+5 -11); threat weight 20: 15 (+2 -8). A generic scorer loses to the tuned rule chain (FIT_FIGHT, CONVERGE, DUEL_STAND, retreat) |
 
 ---

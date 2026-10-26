@@ -1,6 +1,6 @@
 # How to submit (CAMBC 2026)
 
-`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v40pr = v36all + VESPER_STR_STACK + DUEL_STAND + PAIRING, also frozen as `bots/v40pr`; `bots/v40` is the same source with PAIRING off; `bots/v36all`, `bots/v35`, `bots/v31` and `bots/v28` are rollbacks). Adversary `bots/zmarc` reproduces the ladder's Marcella-invader losses.
+`Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v47h25 = v46gc + HP_RATIO_GUARD (K 2.5), also frozen as `bots/v47h25`; `bots/v47` is the same source with the guard off (= v46gc, ladder v36); `bots/v46gc` (ladder v36), `bots/v45sq` (ladder v35), `bots/v40pr` (ladder v34), `bots/v36all`, `bots/v35`, `bots/v31` and `bots/v28` are rollbacks). Adversary `bots/zmarc` reproduces the ladder's Marcella-invader losses.
 Ladder team: **HighCortisol** (team id `58271d23-d86a-48de-987a-5d82c983d7db`).
 
 ## Where the submission zip lives
