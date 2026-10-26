@@ -14,6 +14,7 @@ every bot (`cambc build X`) before running; concurrent first builds break games.
 import argparse, hashlib, json, math, os, random, subprocess, sys, tempfile
 
 P = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Submission/
+POOL = set(open(os.path.join(P, 'tools', 'data', 'pool.txt')).read().split())  # the ladder map pool (cambc maps list)
 ap = argparse.ArgumentParser()
 ap.add_argument('variant'); ap.add_argument('base'); ap.add_argument('opps')
 ap.add_argument('--maps', default=''); ap.add_argument('--p1', type=float, default=0.65)
@@ -22,8 +23,11 @@ ap.add_argument('--batch', type=int, default=16); ap.add_argument('--max', type=
 ap.add_argument('--seed', type=int, default=1); ap.add_argument('--jobs', type=int, default=8)
 a = ap.parse_args()
 
+ENGINE = subprocess.run(['cambc', '--version'], capture_output=True, text=True).stdout.strip()  # results differ per engine
+
+
 def src_hash(bot):
-    h = hashlib.sha1()
+    h = hashlib.sha1(ENGINE.encode())
     root = f'{P}/bots/{bot}/src'
     for dp, _, fs in sorted(os.walk(root)):
         for f in sorted(fs):
@@ -31,7 +35,7 @@ def src_hash(bot):
     return h.hexdigest()[:12]
 
 CACHE = os.path.join(tempfile.gettempdir(), 'kessoku_sprt')
-maps = a.maps.split(',') if a.maps else sorted(f[:-7] for f in os.listdir(f'{P}/maps') if f.endswith('.map26a') and f[:2] in ('00', '01'))
+maps = a.maps.split(',') if a.maps else sorted(f[:-7] for f in os.listdir(f'{P}/maps') if f.endswith('.map26a') and f[:-7] in POOL)
 games = [(m, s, o) for m in maps for s in 'AB' for o in a.opps.split(',')]
 random.Random(a.seed).shuffle(games)
 games = games[:a.max]

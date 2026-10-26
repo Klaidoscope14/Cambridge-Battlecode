@@ -10,6 +10,8 @@ usage (from Submission/, after `aws login`):
   scripts read them as if the games had run locally (re-running sprt.py locally then only prints the verdict).
 - `ab` and `batch` terminate the instance at the end, also on errors or Ctrl-C; pass --keep to leave it up for more runs
   (then `down` when done). Every instance also powers itself off (= terminates) after MAX_MINUTES (default 120).
+- The instance installs the same cambc version as this machine, so both play the same engine; without a Linux wheel
+  for that version the runner stops before launching anything.
 - Spot instance types are tried in order until one launches (capacity varies by zone). Region: `aws configure get region`.
 - Uses key pair `kessoku-runner` (~/.ssh/kessoku-runner.pem) and the SSH-only security group `kessoku-runner`; both are
   created on first use, and the group is opened to this machine's current public IP.
@@ -22,13 +24,16 @@ KEY = os.path.expanduser(f'~/.ssh/{NAME}.pem')
 STATE = os.path.expanduser('~/.cache/kessoku_aws.json')
 TYPES = os.environ.get('AWS_TYPES', 'c7i.48xlarge,c6a.48xlarge,c7a.48xlarge,c6i.32xlarge').split(',')
 MAX_MINUTES = int(os.environ.get('MAX_MINUTES', '120'))
+# The runner must play the same engine as the Mac: install the local cambc version (override with CAMBC_VERSION).
+CAMBC_VERSION = os.environ.get('CAMBC_VERSION') or subprocess.run(['cambc', '--version'], capture_output=True,
+                                                                  text=True).stdout.split()[-1]
 CACHE = os.path.join(tempfile.gettempdir(), 'kessoku_sprt')
 SSH = ['ssh', '-i', KEY, '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=30']
 REMOTE_ENV = 'export PATH=/home/ubuntu/venv/bin:$PATH; cd /home/ubuntu/Submission'
 USER_DATA = f"""#!/bin/bash
 shutdown -h +{MAX_MINUTES}
 apt-get update -y && apt-get install -y python3-pip python3-venv rsync unzip
-sudo -u ubuntu python3 -m venv /home/ubuntu/venv && sudo -u ubuntu /home/ubuntu/venv/bin/pip install cambc==3.0.5
+sudo -u ubuntu python3 -m venv /home/ubuntu/venv && sudo -u ubuntu /home/ubuntu/venv/bin/pip install cambc=={CAMBC_VERSION}
 touch /home/ubuntu/READY
 """
 
@@ -108,7 +113,17 @@ def ssh(cmd, capture=False):
     return r.stdout if capture else None
 
 
+def linux_wheel_exists():
+    r = subprocess.run(['curl', '-s', f'https://pypi.org/pypi/cambc/{CAMBC_VERSION}/json'], capture_output=True, text=True)
+    try:
+        return any('manylinux' in u['filename'] and 'x86_64' in u['filename'] for u in json.loads(r.stdout)['urls'])
+    except Exception:
+        return True  # PyPI unreachable: let the install on the instance decide
+
+
 def up():
+    if not linux_wheel_exists():
+        raise SystemExit(f'cambc {CAMBC_VERSION} has no Linux x86_64 wheel on PyPI yet: AWS cannot run this engine; test locally')
     iid, ip = running_instance()
     if not iid:
         sg = ensure_key_and_group()

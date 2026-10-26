@@ -13,9 +13,10 @@ A mirror at parity wins half the games (matches are deterministic).
 import json, os, subprocess, sys, tempfile
 
 P = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Submission/
+POOL = set(open(os.path.join(P, 'tools', 'data', 'pool.txt')).read().split())  # the ladder map pool (cambc maps list)
 tag, bot, opp, maps = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
 if not maps:
-    maps = sorted(f[:-7] for f in os.listdir(f'{P}/maps') if f.endswith('.map26a') and f[:2] in ('00', '01'))
+    maps = sorted(f[:-7] for f in os.listdir(f'{P}/maps') if f.endswith('.map26a') and f[:-7] in POOL)
 jobs = int(os.environ.get('JOBS', '8'))
 D = os.path.join(os.environ.get('AB_OUT', os.path.join(tempfile.gettempdir(), 'kessoku_ab')), tag)
 os.makedirs(D, exist_ok=True)

@@ -12,6 +12,24 @@ Version names are internal (the ladder numbers its uploads one lower until v28: 
 
 ---
 
+## 0. Patch 2026-10-26: engine 2.0.0 / cambc 4.0.0
+
+- Breaking: the item backpack grew from 42 to 84 item types. Bots built against the old SDK do nothing on the new engine
+  (0 gold, 0 damage, no error, no fault). After upgrading cambc, run `cambc init --yes .` in Submission/ AND delete every
+  `bots/*/.cambc` build cache, or `cambc build` keeps the stale build. The sprt cache is now keyed by `cambc --version`.
+- Map pool 40 -> 70 maps (new 00anvil/breadcrumbs/crater/dunes/galaxy/oasis/quarry/ribs/the_line/vault, 15 `02*` maps,
+  adgato_gemcombat1-5); the list is in `Submission/tools/data/pool.txt`, used by tools/sprt.py and tools/ab.py.
+- Balance: Treasure +20% -> +10% gold; Monster +10% -> +15% camp damage; Vesper Strength 55 -> 45; Varg 40 -> 45; Tavi
+  stun 1.4 -> 1.6x Focus; Willow Focus 120 -> 140; Marcella/Ryth Strength per shard 5 -> 4.5; Heart Strength/Focus per shard
+  down; Cassi, Stellar, Prism, Ren, Issac up. Draft first-turn fuel x10.
+- New emblem families: Capture (capture 5 -> 3 turns when any capturer owns it), Tribute (-33% tribute time), Prospector
+  (+25% cluster gold/gems), Hunter (+50 gold per champion kill), Skirmish (+5% damage to champions), Greed (25 shards ->
+  35 shards of stats), Collectors (+1% damage per distinct emblem family).
+- New API: camp-group `capture_state()` (ally capturing / contested / enemy capturing / available / none, with timer);
+  `cambc::get_item_enum(family, stat, shard)`.
+- cambc 4.0.0 has no Linux wheel (macOS only), so `tools/aws_runner.py` refuses to launch until one exists.
+- v40pr on engine 2.0.0 after a clean rebuild: 0 faults, 24/24 vs starter-cpp, 46 vs 41 vs v36all (72 games).
+
 ## 1. Where we stand (2026-10-25)
 
 - Submission: **v36all** = v35 + `LESS_WAIT` + `TREASURE_FIRST` + `BRUISER_ITEMS` (`bots/kessoku`, `bots/v36all`).
@@ -266,6 +284,9 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 | `STUN_CHASER` (stun a non-Marcella melee enemy within 2 of us or next to a hurt ally; stun before escaping), on v40pr | 794 vs 786 over 12 opponents (+41 -33); zmarc 52 vs 51, deaths unchanged: neutral |
 | `STUN_RESERVE` (no stuns on camps while enemies were seen in the last 30 rounds) | 778 vs 786; zmarc 46 vs 51 (+5 -14): worse |
 | `STUN_CHASER` + `STUN_RESERVE` | 763 vs 786 |
+| `WARD_AHEAD` (re-place ward each turn on the tile nearest the enemy spawn; ~300-550 wards/game), on v40pr | 759 vs 786 (+83 -110) |
+| `WARD_POST` (ward on the enemy-facing side of each new target, kept until the target changes) | 768 vs 786 (+88 -106) |
+| Patch build orders on engine 2.0.0 (`ITEM_PLAN`, dev bots/v43; 420 games each vs v40pr on 70 maps x zgank/zmarc/zmeta): 1 Capture-Treasure-Jungle-Monster 299 vs 293 (+45 -39); 2 Treasure-Capture-Jungle-Monster 292; 3 Monster-Jungle (no Treasure) 293, gold@300 -31; 4 Monster-Treasure-Jungle 297; 5 + Tribute 4th 285 (+21 -29); 6 Capture-Treasure-Tribute-Jungle-Monster 290; 7 Capture-Monster-Jungle 288 | none beats Treasure-Jungle-Monster; Treasure still pays at 10%; Tribute hurts |
 
 ---
 
