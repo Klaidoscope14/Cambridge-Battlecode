@@ -1,0 +1,14 @@
+{
+  "note": "Fixed test panel (2026-10-26): teams rated +100..+150 above us. Reuse source_group so every candidate meets the same opponent versions on the same maps and sides.",
+  "maps": "00eight,00elkring,00lanes,01starfish,02arena",
+  "sides": "a,b,a,b,a",
+  "teams": [
+    {"name": "the uncancelables", "team_id": "dda35964-f70a-4ced-ab60-7304ddaadb8d", "source_group": "c46c66fc-2733-4f8e-99a7-3a0b07eaae8f"},
+    {"name": "lETHal", "team_id": "ebb0ee4b-a81e-43cd-a729-58938a97e623", "source_group": "7c6ac8d6-28af-43c4-8c67-53370977747a"},
+    {"name": "Crimson Pathfinders", "team_id": "271f8b15-7d97-4a0a-bd32-b634dd006dc0", "source_group": "80a32b52-6833-44b5-bf6d-d923ec68c916"},
+    {"name": "Martin Shkreli's Defense Team", "team_id": "e116c0be-ed7a-4fe8-b713-d611b8bd09d2", "source_group": "ee5a8b85-a243-4f0f-ba05-5c45887cf80f"}
+  ],
+  "runs": [
+    {"version": "v40pr (ladder v34)", "groups": ["c46c66fc-2733-4f8e-99a7-3a0b07eaae8f", "7c6ac8d6-28af-43c4-8c67-53370977747a", "80a32b52-6833-44b5-bf6d-d923ec68c916", "ee5a8b85-a243-4f0f-ba05-5c45887cf80f"]}
+  ]
+}

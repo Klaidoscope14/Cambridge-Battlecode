@@ -30,7 +30,18 @@ Version names are internal (the ladder numbers its uploads one lower until v28: 
 - cambc 4.0.0 has no Linux wheel (macOS only), so `tools/aws_runner.py` refuses to launch until one exists.
 - v40pr on engine 2.0.0 after a clean rebuild: 0 faults, 24/24 vs starter-cpp, 46 vs 41 vs v36all (72 games).
 
-## 1. Where we stand (2026-10-25)
+## 0b. Real-opponent panel (release loop, 2026-10-26)
+
+Workflow: limited local A/B vs the live bot -> user uploads -> 4 unranked match groups against the fixed panel in
+`Submission/tools/data/panel.json` (teams rated +100..+150 above us; same opponent versions via --source-group, maps
+00eight, 00elkring, 00lanes, 01starfish, 02arena, sides a,b,a,b,a) -> keep (target 40-60% wins) or roll back.
+These maps are our known weak spots, so the panel is a hard test.
+
+| Version | Panel wins | gold@300 us/them | deaths us/them | traded | notes |
+|---|---|---|---|---|---|
+| v40pr (ladder v34, us 1650) | **2/20** (both on 02arena) | 920 / 1475 | 22.9 / 6.2 | 7% | starfish side B: 30-55 deaths, 13-24 of them to camps; elkring: we collect 240-680 vs 1,000+; Vendetta, Prism, Ren, Marcella top killers |
+
+ (2026-10-25)
 
 - Submission: **v36all** = v35 + `LESS_WAIT` + `TREASURE_FIRST` + `BRUISER_ITEMS` (`bots/kessoku`, `bots/v36all`).
   Rollbacks: `bots/v35`, `bots/v31`, `bots/v28`. `bots/v36` = the same source with the three switches off (= v35).
@@ -287,6 +298,7 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 | `WARD_AHEAD` (re-place ward each turn on the tile nearest the enemy spawn; ~300-550 wards/game), on v40pr | 759 vs 786 (+83 -110) |
 | `WARD_POST` (ward on the enemy-facing side of each new target, kept until the target changes) | 768 vs 786 (+88 -106) |
 | Patch build orders on engine 2.0.0 (`ITEM_PLAN`, dev bots/v43; 420 games each vs v40pr on 70 maps x zgank/zmarc/zmeta): 1 Capture-Treasure-Jungle-Monster 299 vs 293 (+45 -39); 2 Treasure-Capture-Jungle-Monster 292; 3 Monster-Jungle (no Treasure) 293, gold@300 -31; 4 Monster-Treasure-Jungle 297; 5 + Tribute 4th 285 (+21 -29); 6 Capture-Treasure-Tribute-Jungle-Monster 290; 7 Capture-Monster-Jungle 288 | none beats Treasure-Jungle-Monster; Treasure still pays at 10%; Tribute hurts |
+| `MOVE_SCORER` (food-postmortem style 9-tile scoring in skirmishes: threat/HP, hit and kill bonus, ally support, home pull, numbers-scaled threat; dev bots/v44), focus set 8 pick-off maps x zmarc/zgank, 32 games vs v40pr (21) | v1 10 (+1 -12; zmarc 1/16, deaths 23 vs 9); + only-when-threatened and lethal-tile guards 15 (+5 -11); threat weight 20: 15 (+2 -8). A generic scorer loses to the tuned rule chain (FIT_FIGHT, CONVERGE, DUEL_STAND, retreat) |
 
 ---
 
