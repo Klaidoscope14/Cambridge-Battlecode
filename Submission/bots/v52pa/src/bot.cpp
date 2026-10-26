@@ -179,7 +179,7 @@ void Bot::note_invaders() {
             enemy_field.compute(terrain & ~enemy_spawn, enemy_spawn, visited);
             enemy_field_ready = true;
         }
-        if (spawn_field.get(f.pos) < enemy_field.get(f.pos)) seen = true;
+        if (Cfg::PAIR_ANYWHERE || spawn_field.get(f.pos) < enemy_field.get(f.pos)) seen = true;
     }
     if (!seen) return;
     const std::uint8_t v = static_cast<std::uint8_t>(std::min(254, round >> 3) + 1);
@@ -1888,28 +1888,7 @@ bool Bot::retreat_if_hurt() {
             if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= 3) incoming += c.strength();
         burst_low = me.health() < Cfg::BURST_RETREAT_MULT * incoming;
     }
-    bool doomed = false;
-    if (Cfg::DOOMED_CAMP) {
-        float incoming = 0.f, left = 0.f;
-        bool alone = true;
-        for (const auto& m : mates) alone = alone && cheb(m.pos, pos) > 2;
-        for (const auto& c : camps)
-            if (alone && c.is_awake() && !c.is_dead() && c.strength() > 0.f && cheb(c.position(), pos) <= spec_of(c).reach + 1
-                && !(c.is_monolith() && target >= 0 && target == group_of(c.spawn_position()))  // a planned monolith fight
-                && (group_of(c.spawn_position()) < 0 || claims_on(group_of(c.spawn_position())) == 0))  // no helper on the way
-                incoming += c.strength(), left += c.health();
-        if (incoming > 0.f) {
-            const float taken = incoming * (has_jungle ? Cfg::JUNGLE_TAKEN : 1.f);
-            doomed = me.health() < taken * (left / dps_single + Cfg::DC_ESCAPE);
-            if (doomed)
-                for (const auto& c : camps)
-                    if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= spec_of(c).reach + 1) {
-                        const int gid = group_of(c.spawn_position());
-                        if (gid >= 0) groups[static_cast<std::size_t>(gid)].skip_until = round + Cfg::DC_SKIP;
-                    }
-        }
-    }
-    if (frac >= floor_hp && !burst_low && !doomed) return false;
+    if (frac >= floor_hp && !burst_low) return false;
     if (ally_spawn.is_set(pos)) return true;  // heal at turn end
 
     // Tribute ignores damage, so a bag next to an altar is banked even now.
@@ -2366,6 +2345,20 @@ void Bot::play_turn() {
             if (burst_here * Cfg::LETHAL_MARGIN >= my_hp || outmatched) {
                 if (escape()) return;
             }
+        }
+    }
+    if (Cfg::ISO_STEP && ranged && !foes.empty()) {
+        bool alone = true, close = false, weak = true;
+        for (const auto& m : mates) alone = alone && cheb(m.pos, pos) > Cfg::ISO_ALLY;
+        for (const auto& f : foes)
+            if (f.weight >= 1.f && cheb(f.pos, pos) <= Cfg::ISO_RANGE && !(Cfg::CONVERGE_FIX && enemy_spawn.is_set(f.pos))) {
+                if (!f.ranged) close = true;
+                weak = weak && f.hp <= Cfg::ISO_WEAK * my_hp;
+            }
+        if (alone && close && !weak) {
+            g_stage = "iso";
+            fight_enemies(true);  // a kill is still worth taking
+            if (escape()) return;
         }
     }
     g_stage = "enemies:aggro";

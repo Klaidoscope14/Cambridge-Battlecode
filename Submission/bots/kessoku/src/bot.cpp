@@ -129,6 +129,17 @@ void Bot::init() {
     }
     body = std::min(body, Mem::MAX_BODIES - 1);
     bodies = static_cast<int>(types.size());
+    if (Cfg::ITEM_ADAPT) {  // camp-gold income per champion (half the map's supply, ~1,200 rounds) and fighting-gem share
+        float gold_rate = 0.f, gems = 0.f, fight_gems = 0.f;
+        for (const auto& g : groups) {
+            gold_rate += static_cast<float>(g.gold) * 1000.f / static_cast<float>(g.max_respawn + 60);
+            gems += static_cast<float>(g.gems);
+            if (g.strength > 0.f) fight_gems += static_cast<float>(g.gems);
+        }
+        const float income = gold_rate / (2.f * static_cast<float>(std::max(bodies, 1))) * 1.2f;
+        ia_skip_treasure = income < Cfg::IA_MIN_INCOME;
+        ia_skip_camp_items = gems > 0.f && fight_gems / gems < Cfg::IA_MIN_FIGHT;
+    }
 
     ranged = me.attack_range() > 1;
     last_gems = me.gem_count();
@@ -179,7 +190,7 @@ void Bot::note_invaders() {
             enemy_field.compute(terrain & ~enemy_spawn, enemy_spawn, visited);
             enemy_field_ready = true;
         }
-        if (spawn_field.get(f.pos) < enemy_field.get(f.pos)) seen = true;
+        if (Cfg::PAIR_ANYWHERE || spawn_field.get(f.pos) < enemy_field.get(f.pos)) seen = true;
     }
     if (!seen) return;
     const std::uint8_t v = static_cast<std::uint8_t>(std::min(254, round >> 3) + 1);
@@ -369,18 +380,20 @@ std::optional<bc::item_type> Bot::next_item() const {
         || kind == bc::champion_type::issac || kind == bc::champion_type::marcella || kind == bc::champion_type::heart_of_ruin
         || kind == bc::champion_type::ren;
     if (Cfg::TREASURE_FIRST) {
-        if (focus) plan.push_back({I::treasure_shard_of_focus, I::treasure_emblem_of_focus});
-        else if (melee) plan.push_back({I::treasure_shard_of_health, I::treasure_emblem_of_health});
-        else plan.push_back({I::treasure_shard_of_strength, I::treasure_emblem_of_strength});
-        if (kind != bc::champion_type::ryth)  // Ryth's Jungle comes from RYTH_BUILD
+        if (!ia_skip_treasure) {
+            if (focus) plan.push_back({I::treasure_shard_of_focus, I::treasure_emblem_of_focus});
+            else if (melee) plan.push_back({I::treasure_shard_of_health, I::treasure_emblem_of_health});
+            else plan.push_back({I::treasure_shard_of_strength, I::treasure_emblem_of_strength});
+        }
+        if (kind != bc::champion_type::ryth && !ia_skip_camp_items)  // Ryth's Jungle comes from RYTH_BUILD
             plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
-    } else if (kind == bc::champion_type::vesper_vale)
+    } else if (kind == bc::champion_type::vesper_vale && !ia_skip_treasure)
         plan.push_back({I::treasure_shard_of_strength, I::treasure_emblem_of_strength});
     if (kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 1)
         plan.push_back({I::durability_shard_of_health, I::durability_emblem_of_health});
-    if (kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 2)
+    if (kind == bc::champion_type::ryth && Cfg::RYTH_BUILD == 2 && !ia_skip_camp_items)
         plan.push_back({I::jungle_shard_of_health, I::jungle_emblem_of_health});
-    if (!Cfg::NO_MONSTER) {
+    if (!Cfg::NO_MONSTER && !ia_skip_camp_items) {
         if (focus) plan.push_back({I::monster_shard_of_focus, I::monster_emblem_of_focus});
         else plan.push_back({I::monster_shard_of_strength, I::monster_emblem_of_strength});
     }
@@ -1041,6 +1054,25 @@ void Bot::assess_threat() {
             if (cheb(m.pos, pos) <= 6) ours += m.hp;
         if (theirs > Cfg::HR_K * ours) outmatched = true;
     }
+    exchange_lost = false;
+    if (Cfg::EXCHANGE_GUARD) {
+        HpSnap now{round, my_hp / std::max(my_max, 1.f), {}};
+        now.foe.fill(-1.f);
+        for (const auto& f : foes)
+            if (f.weight >= 1.f && f.type >= 0 && f.type < 16) now.foe[static_cast<std::size_t>(f.type)] = f.hp / f.max_hp;
+        std::erase_if(hp_hist, [&](const HpSnap& h) { return h.round < round - Cfg::EG_WINDOW; });
+        if (!hp_hist.empty() && nearest <= Cfg::EG_RANGE) {
+            const auto& then = hp_hist.front();
+            const float lost = then.mine - now.mine;
+            float dealt = 0.f;
+            for (const auto& f : foes) {
+                const auto t = static_cast<std::size_t>(f.type);
+                if (f.weight >= 1.f && t < 16 && cheb(f.pos, pos) <= 4 && then.foe[t] >= 0.f) dealt += std::max(0.f, then.foe[t] - now.foe[t]);
+            }
+            if (lost >= Cfg::EG_MIN_LOSS && dealt < Cfg::EG_RATIO * lost) exchange_lost = outmatched = true;
+        }
+        hp_hist.push_back(now);
+    }
     if (Cfg::FIGHT_SIM_OUTMATCHED && nearest <= Cfg::SKIRMISH_RANGE) {
         const auto f = simulate_fight(pos, Cfg::FIGHT_SIM_ROUNDS, false);
         const float ours = f.ours0 > 0.f ? f.ours_left / f.ours0 : 0.f;
@@ -1252,7 +1284,7 @@ bool Bot::escape() {
         int near = 0;
         for (const auto& f : foes)
             if (f.weight >= 1.f && cheb(f.pos, pos) <= 6) ++near, lone = &f;
-        if (!acted_attack && near == 1 && !lone->ranged && cheb(lone->pos, pos) <= 2 && lone->hp <= Cfg::DUEL_HP_RATIO * my_hp
+        if (!acted_attack && !exchange_lost && near == 1 && !lone->ranged && cheb(lone->pos, pos) <= 2 && lone->hp <= Cfg::DUEL_HP_RATIO * my_hp
             && flight_futile() && fight_enemies())
             return true;
     }
@@ -1888,7 +1920,28 @@ bool Bot::retreat_if_hurt() {
             if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= 3) incoming += c.strength();
         burst_low = me.health() < Cfg::BURST_RETREAT_MULT * incoming;
     }
-    if (frac >= floor_hp && !burst_low) return false;
+    bool doomed = false;
+    if (Cfg::DOOMED_CAMP) {
+        float incoming = 0.f, left = 0.f;
+        bool alone = true;
+        for (const auto& m : mates) alone = alone && cheb(m.pos, pos) > 2;
+        for (const auto& c : camps)
+            if (alone && c.is_awake() && !c.is_dead() && c.strength() > 0.f && cheb(c.position(), pos) <= spec_of(c).reach + 1
+                && !(c.is_monolith() && target >= 0 && target == group_of(c.spawn_position()))  // a planned monolith fight
+                && (group_of(c.spawn_position()) < 0 || claims_on(group_of(c.spawn_position())) == 0))  // no helper on the way
+                incoming += c.strength(), left += c.health();
+        if (incoming > 0.f) {
+            const float taken = incoming * (has_jungle ? Cfg::JUNGLE_TAKEN : 1.f);
+            doomed = me.health() < taken * (left / dps_single + Cfg::DC_ESCAPE);
+            if (doomed)
+                for (const auto& c : camps)
+                    if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= spec_of(c).reach + 1) {
+                        const int gid = group_of(c.spawn_position());
+                        if (gid >= 0) groups[static_cast<std::size_t>(gid)].skip_until = round + Cfg::DC_SKIP;
+                    }
+        }
+    }
+    if (frac >= floor_hp && !burst_low && !doomed) return false;
     if (ally_spawn.is_set(pos)) return true;  // heal at turn end
 
     // Tribute ignores damage, so a bag next to an altar is banked even now.
@@ -2345,6 +2398,20 @@ void Bot::play_turn() {
             if (burst_here * Cfg::LETHAL_MARGIN >= my_hp || outmatched) {
                 if (escape()) return;
             }
+        }
+    }
+    if (Cfg::ISO_STEP && ranged && !foes.empty()) {
+        bool alone = true, close = false, weak = true;
+        for (const auto& m : mates) alone = alone && cheb(m.pos, pos) > Cfg::ISO_ALLY;
+        for (const auto& f : foes)
+            if (f.weight >= 1.f && cheb(f.pos, pos) <= Cfg::ISO_RANGE && !(Cfg::CONVERGE_FIX && enemy_spawn.is_set(f.pos))) {
+                if (!f.ranged) close = true;
+                weak = weak && f.hp <= Cfg::ISO_WEAK * my_hp;
+            }
+        if (alone && close && !weak) {
+            g_stage = "iso";
+            fight_enemies(true);  // a kill is still worth taking
+            if (escape()) return;
         }
     }
     g_stage = "enemies:aggro";

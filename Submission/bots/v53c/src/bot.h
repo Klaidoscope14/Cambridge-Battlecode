@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -62,6 +63,7 @@ class Bot {
     bool paired = false;   // Cassi or Issac: one death kills both halves
     int partner_type = -1, partner_body = 0;
     int bodies = 1;        // allied champion bodies (Cassi & Issac count twice)
+    bool ia_skip_treasure = false, ia_skip_camp_items = false;  // ITEM_ADAPT: decided once from map geometry
     bool ranged = false;
     bc::champion_type kind{};
 
@@ -133,6 +135,9 @@ class Bot {
     std::vector<Mate> mates;
     float burst_here = 0.f;   // enemy burst reaching our tile this turn
     bool outmatched = false;  // nearby enemies out-fight us and our allies
+    struct HpSnap { int round; float mine; std::array<float, 16> foe; };  // HP shares; -1 = not seen
+    std::vector<HpSnap> hp_hist;  // EXCHANGE_GUARD: the last EG_WINDOW turns
+    bool exchange_lost = false;
     bitboard danger;          // tiles worth avoiding while walking
     bool danger_ready = true;
 

@@ -189,10 +189,39 @@ inline constexpr int CR_BAG = 20;
 // enemy HP > HR_K x ours with an enemy within HR_RANGE as outmatched.
 inline constexpr bool HP_RATIO_GUARD = true;
 inline constexpr float HR_K = 2.5f;
+// ITEM_ADAPT (new maps, 2026-10-26): the 30 patch maps carry half the camp gold of the old ones (adgato_gemcombat*: none),
+// so gold comes from kills and Treasure / Jungle / Monster openers are dead weight. From the map's own groups at runtime:
+// skip Treasure when estimated camp-gold income per champion per game < IA_MIN_INCOME (Treasure's +10% cannot repay its
+// 150 gold), skip Jungle and Monster when < IA_MIN_FIGHT of the map's gems sit in groups that fight back.
+inline constexpr bool ITEM_ADAPT = false;
+inline constexpr float IA_MIN_INCOME = 500.f;
+inline constexpr float IA_MIN_FIGHT = 0.25f;
 inline constexpr int HR_RANGE = 5;  // ... and an altar tribute tile this close (only starfish's centre group on the 70-map pool)
+// Fighting awake camps with no ally within 2 and no ally claim on the group: leave while the walk out is still
+// survivable when our health cannot outlast the camps (their damage x rounds to kill them + DC_ESCAPE rounds of chase).
+inline constexpr bool DOOMED_CAMP = false;
+inline constexpr float DC_ESCAPE = 4.f;
+inline constexpr int DC_SKIP = 15;  // then leave that group alone this long
+// EXCHANGE_GUARD (v37 ladder: 95% of our deaths in losses are untraded): if over the last EG_WINDOW turns we lost
+// >= EG_MIN_LOSS of our HP share and the visible enemies within 4 lost less than EG_RATIO x that, treat it as
+// outmatched (escape; no DUEL_STAND).
+inline constexpr bool EXCHANGE_GUARD = true;
+inline constexpr int EG_WINDOW = 6;
+inline constexpr float EG_MIN_LOSS = 0.20f;
+inline constexpr float EG_RATIO = 0.5f;
+inline constexpr int EG_RANGE = 3;  // an enemy this close
 inline constexpr int PAIR_RANGE = 5;
 inline constexpr int PAIR_WINDOW = 80;
 inline constexpr float PAIR_ALONE_MULT = 0.25f;
+// Prevention (v37 ladder: 44% of early deaths in losses had no ally within 6 when the enemy came; 54% in the middle
+// third, where PAIRING's "nearer our spawn" invader test does not fire).
+inline constexpr bool PAIR_ANYWHERE = true;  // any visible enemy melee champion counts as an invader for PAIRING
+// ISO_STEP: a ranged champion with no ally within ISO_ALLY and a visible enemy melee champion within ISO_RANGE takes
+// a free kill if it has one, then steps out of reach (escape) before the bruiser closes, unless the foe is weak.
+inline constexpr bool ISO_STEP = false;
+inline constexpr int ISO_RANGE = 4;
+inline constexpr int ISO_ALLY = 3;
+inline constexpr float ISO_WEAK = 0.5f;  // foe HP at most this x ours: fight it instead
 inline constexpr bool PAIR_BRUISERS_ONLY = false;  // trigger only on Marcella, Heart of Ruin, Ryth, Vendetta
 inline constexpr int MELEE_OPENER = 0;          // third forced opener: 0 Willow, 1 Vendetta, 2 Marcella
 // Enemy threat.

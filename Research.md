@@ -245,6 +245,36 @@ Ordered by current priority.
 
 ---
 
+### The 30 new maps (2026-10-26)
+
+`tools/data/geo.json` holds the zgeo geometry of all 70 maps (groups with gems/gold/respawn/strength/kinds, altars,
+terrain); `tools/data/spawns.json` covers all 70. New maps carry half the camp gold of the old ones (1,142 vs 2,130;
+adgato_gemcombat1-5 none), 40% of gems in monster-free clusters (old 6%), fewer altars (2.2 vs 3.9). In 80 engine-2
+games (ranked + panel A) we collect as many gems early but earn far less gold (gold@300 few-cluster new maps 713 vs
+1,031, >=80% clusters 240 vs 731) and die more (15-22 vs 5-10); win rate 58% old, 32% new few-cluster, 42% new
+cluster-heavy. `ITEM_ADAPT` (bots/v49ia: skip Treasure / Jungle+Monster by map economy) neutral locally (78 vs 79).
+
+### v47h25 on the ranked ladder (ladder v37, 95 games from the "deadlock worst game ever" round, 2026-10-26)
+
+43/95 (45%). Gold@300 decides it: ahead 80% wins, behind 20%; behind almost always means more deaths before r300
+(3.3 vs 1.4). First death: median r73 in losses, r113 in wins.
+- **Two kinds of loss.** 34 of 51 are fight losses (deaths 27 vs 7, gold@300 565 vs 1,136, tribute 464 vs 1,007).
+  17 are race losses with few deaths (6.5 vs 3.1): we lead gems at r300 (224 vs 184) but earn 941 gold in r300-600
+  against their 1,534, collect 906 vs 1,111 gems, drop 112 vs 49 to deaths; they reach 1,000 first (tangle, rows,
+  road_of_riches, rushbait_v2, cuts, expanse, big_world, the_pack).
+- **Untraded deaths.** 95% of our deaths in losses have no enemy death within 10 rounds and 8 tiles (late in wins 18%).
+  Of 239 deaths before r400 in losses, 74% had an enemy within 6 tiles 12 rounds earlier, 44% no ally within 6,
+  48% faced >2.5x our HP 4 rounds before (HP_RATIO_GUARD's threshold). Victims spread over Vesper/Tavi/Varg/Willow;
+  killers Vendetta, Heart of Ruin, Ryth, Marcella. Camps kill few (1.2/game).
+- **Opponents.** vs Cassi & Issac 1/9, Ren 4/14, Varg 8/25, Heart 19/49 (no Heart 53%). 0/5 vs Rogo
+  (Heart/Marcella/Vesper/Ryth/Vendetta) and noobers (Heart/Ren/Ryth/Vesper).
+- **Maps.** adgato_gemcombat1 0/3, 02uncharted_lands 0/3, 00monolith 1/4, 00reverse_spiral 1/4, 00quarry, 00lanes,
+  00elkring, 01gold_rush, 02tangle, 02the_pack 0/2. Maps with 1,000-2,000 camp gold 33%.
+- **Wards: we place 0, opponents 167 a game** (153 in our losses, 184 in our wins: not a direct cause).
+- Local stage logging (bots/v51dbg vs zmarc/zgank, 301 deaths): the turns before a death end in normal farming
+  (`turn:done`, 134) or banking (50) with an enemy at range 1-2 and HP draining, i.e. not judged outmatched; retreat
+  starts at 30% when it is too late. Judging the fight by the HP exchange instead (`EXCHANGE_GUARD`) did not help.
+
 ## 6. Measured and rejected (do not retry without new evidence)
 
 Local numbers are wins out of 70 (35 maps x 2 sides) or 80 (40 maps) per opponent unless stated; "field" = sum over
@@ -321,6 +351,14 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 | `STUN_CHASER` + `STUN_RESERVE` | 763 vs 786 |
 | `WARD_AHEAD` (re-place ward each turn on the tile nearest the enemy spawn; ~300-550 wards/game), on v40pr | 759 vs 786 (+83 -110) |
 | `WARD_POST` (ward on the enemy-facing side of each new target, kept until the target changes) | 768 vs 786 (+88 -106) |
+| `DOOMED_CAMP` (lone champion leaves awake camps it cannot outlast + 2/4/6 rounds of chase, skips the group 40), bots/v50dc on v47h25, AWS 1,680 games | +23 -86 at 384 games (all three escape values) |
+| `DOOMED_CAMP` + only when no ally claims the group, skip 15 | 1,330 vs 1,358 (+87 -115): breaks squad gathering |
+| `EXCHANGE_GUARD` (outmatched when over the last 4 turns we lost >= 15% HP share and enemies within 4 lost < half that; no DUEL_STAND then), bots/v51eg on v47h25, AWS 1,680 games | 1,324 vs 1,358 (+119 -153); 10%: 1,334; 20% over 6 turns: 1,353 (+141 -146). zmarc 84-93 vs 94, deaths unchanged (13.9 vs 14.1): leaving earlier does not save a ranged champion a melee bruiser already reaches |
+| Prevention, bots/v52 on v47h25, AWS 1,680 games: `PAIR_ANYWHERE` (PAIRING fires for melee enemies anywhere, not only on our half) | 1,352 vs 1,358 (+111 -117), deaths 6.90 vs 7.05: neutral |
+| ... + `PAIR_ALONE_MULT` 0.1 | 1,329 (+117 -146) |
+| `ISO_STEP` (ranged, no ally within 3, enemy melee within 4 / 3: take a kill, then escape) | range 4: 863 vs 936 at 1,152 games (+61 -134); range 3: 1,329; with PAIR_ANYWHERE: 876 vs 936. Worst vs zgank/zstack: stepping away gives up camps and fights |
+| Re-test under the per-candidate protocol (focused target set, then full-pool non-regression), bots/v53 on v47h25: all five combined | target (14 worst ladder maps x zmarc/zgank) 33 vs 35: fail |
+| ... singly on their targets: `ITEM_ADAPT` 31 vs 36 (12 low-gold maps), `ISO_STEP` r3 33 vs 35, `DOOMED_CAMP` 21 vs 20 (full pool borderline worse), `EXCHANGE_GUARD` 20%/6 35 vs 35 | EXCHANGE_GUARD + PAIR_ANYWHERE = **v53c**: full pool 1,342 vs 1,358 (+137 -153, within noise) -> packaged as kessoku.zip for the ladder test |
 | Patch build orders on engine 2.0.0 (`ITEM_PLAN`, dev bots/v43; 420 games each vs v40pr on 70 maps x zgank/zmarc/zmeta): 1 Capture-Treasure-Jungle-Monster 299 vs 293 (+45 -39); 2 Treasure-Capture-Jungle-Monster 292; 3 Monster-Jungle (no Treasure) 293, gold@300 -31; 4 Monster-Treasure-Jungle 297; 5 + Tribute 4th 285 (+21 -29); 6 Capture-Treasure-Tribute-Jungle-Monster 290; 7 Capture-Monster-Jungle 288 | none beats Treasure-Jungle-Monster; Treasure still pays at 10%; Tribute hurts |
 | `BIG_GROUP_FULL_HP` (count unseen camps at full HP only for groups with >= 10 camps, strength >= 300 and an altar inside; on the 70-map pool that is only starfish's centre group; dev bots/v45, candidate bots/v45bg) | starfish side B: camp deaths 17.4 -> 5.1/game, all deaths 30.9 -> 15.8, but wins 12/13 -> 9/12 (two games lost the farming race); side A unchanged; other maps flat (zgank 88 vs 86, zmeta 126 vs 125 over 140 each). Not clearly better than v40pr locally: not handed over |
 | + `BIG_GROUP_SQUAD` (take that group as a team: up to bodies-1 helpers, pool 0.9, 3x squad clocks; bots/v45sq) | starfish vs 12 opponents: side B 11/12 (v40pr 12/13), deaths 21.0 vs 30.9, camp deaths 6.3 vs 17.4, collected 1174 vs 1144; side A 12/12; starfish total 23 vs 23. Other maps (gate never fires) differ only by fuel-timing noise: 13 vs 20 discordant over 420 games vs zgank/zmeta/zmarc. Locally even with v40pr; its target is the ladder, where v40pr went 0/4 on starfish against the panel |
