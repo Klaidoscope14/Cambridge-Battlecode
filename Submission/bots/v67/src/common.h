@@ -73,7 +73,7 @@ inline constexpr int TOUR_DEPTH = 3;
 // Measured with re-score 12: tribute check gave identical games (never fires locally); with the
 // outmatched sim too 35/70 (fewer deaths vs the proxy, 359 -> 306) -> both off.
 inline constexpr bool FIGHT_SIM_TRIBUTE = false;    // refuse a tribute channel we would not survive
-inline constexpr bool FIGHT_SIM_OUTMATCHED = false; // outmatched = we die, or they keep more health
+inline constexpr bool FIGHT_SIM_OUTMATCHED = true; // outmatched = we die, or they keep more health
 inline constexpr int FIGHT_SIM_ROUNDS = 6;
 inline constexpr float FIGHT_SIM_MARGIN = 0.15f;    // their remaining share minus ours that counts as losing
 // Fuel (100x100 maps ran out mid-turn ~300 times a game on 01big_world): skip a re-score or
@@ -104,7 +104,13 @@ inline constexpr float PAIR_DRAFT_SCORE = 7.0f;      // draft value of the pick 
 inline constexpr bool CI_DRAFT = true;
 // MONO_AVOID (194 monolith-map games, 45%: they clear 0.64 monoliths a game to our 0.02; 28% of our deaths are within 5
 // tiles of a monolith): an awake monolith that is not our target is danger within its reach + 1 in burst_at.
-inline constexpr bool MONO_AVOID = false;
+inline constexpr bool MONO_AVOID = true;
+// --- v66 (2026-10-27), from v41+v43 ladder (175 games) split by map mode ---
+// THREAT_BANK8: gems lost per death 16.1 vs 11.5 on normal maps, 8.4 vs 6.2 on fight maps. On non-race maps a bag of
+// THREAT_BANK_BAG+ banks with an enemy within THREAT_BANK_RANGE (small bags used 4).
+inline constexpr bool THREAT_BANK8 = true;
+// RACE_SOLO: on race maps the enemy clears 62 camps to our 37 and contact is rare: no PAIRING there.
+inline constexpr bool RACE_SOLO = true;
 // Review 2026-10-21: after the Monster + Jungle emblem plan every shard went into Strength/Focus
 // (172 Power Strength shards a game on the ladder): Vesper ended at ~690 Strength and 1385 HP. Buy
 // Power Health shards at this percentage of the Power Strength/Focus shards bought (0 = old build).

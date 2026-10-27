@@ -211,6 +211,7 @@ void Bot::note_invaders() {
 }
 
 bool Bot::invaders_recent() const {
+    if (Cfg::RACE_SOLO && map_mode < 0) return false;
     const int v = mem[Mem::HELP];
     return Cfg::PAIRING && v > 0 && (round >> 3) - (v - 1) <= Cfg::PAIR_WINDOW / 8;
 }
@@ -2139,7 +2140,7 @@ bool Bot::should_bank() const {
     if (bag >= Cfg::THREAT_BANK_BAG) {
         if (outmatched) return true;
         if (carrier) return false;  // even or winning: her bag is Focus for the fight
-        const int range = bag >= Cfg::BANK_THREAT_BAG ? Cfg::THREAT_BANK_RANGE : 4;
+        const int range = bag >= Cfg::BANK_THREAT_BAG || (Cfg::THREAT_BANK8 && map_mode >= 0) ? Cfg::THREAT_BANK_RANGE : 4;
         for (const auto& f : foes)
             if (cheb(f.pos, pos) <= range) return true;
         if (Cfg::GHOSTS && Cfg::GHOST_BANKING && bag >= Cfg::BANK_THREAT_BAG)

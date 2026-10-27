@@ -1224,6 +1224,11 @@ void Bot::ensure_danger() {
 // gets one cast, so a reset, a dash and a spell are alternatives, not a sum.
 float Bot::burst_at(vec2 p) const {
     float total = 0.f;
+    if (Cfg::MONO_AVOID)
+        for (const auto& c : camps)
+            if (c.is_monolith() && c.is_awake() && !c.is_dead() && group_of(c.spawn_position()) != target
+                && cheb(c.position(), p) <= spec_of(c).reach + 1)
+                total += c.strength();
     if (use_ghosts)
         for (const auto& g : ghosts) {
             if (g.seen == round) continue;  // visible: counted below

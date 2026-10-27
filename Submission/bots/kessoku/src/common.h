@@ -99,6 +99,12 @@ inline constexpr float BURST_RETREAT_MULT = 0.f;
 inline constexpr bool PAIR_MIN_HP = false;           // retreat on the lower of the two halves' health
 inline constexpr float PAIR_TOGETHER_BONUS = 1.0f;   // score bonus for the group the other half claims
 inline constexpr float PAIR_DRAFT_SCORE = 7.0f;      // draft value of the pick (9.6 -> 7.0: v23 review, 55/70 vs a Stellar/Ren/Varg/Ryth bot, was 43)
+// CI_DRAFT (v39+v41 ladder, 99 Cassi & Issac games, 42% vs 52%: deaths even 12.6 / 10.8, but they clear 58 camps to our
+// 39 - one pick, two farming bodies; 5/18 on 3-champion maps): take Cassi & Issac with our first pick when available.
+inline constexpr bool CI_DRAFT = true;
+// MONO_AVOID (194 monolith-map games, 45%: they clear 0.64 monoliths a game to our 0.02; 28% of our deaths are within 5
+// tiles of a monolith): an awake monolith that is not our target is danger within its reach + 1 in burst_at.
+inline constexpr bool MONO_AVOID = true;
 // Review 2026-10-21: after the Monster + Jungle emblem plan every shard went into Strength/Focus
 // (172 Power Strength shards a game on the ladder): Vesper ended at ~690 Strength and 1385 HP. Buy
 // Power Health shards at this percentage of the Power Strength/Focus shards bought (0 = old build).
