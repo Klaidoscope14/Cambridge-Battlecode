@@ -99,6 +99,12 @@ inline constexpr float BURST_RETREAT_MULT = 0.f;
 inline constexpr bool PAIR_MIN_HP = false;           // retreat on the lower of the two halves' health
 inline constexpr float PAIR_TOGETHER_BONUS = 1.0f;   // score bonus for the group the other half claims
 inline constexpr float PAIR_DRAFT_SCORE = 7.0f;      // draft value of the pick (9.6 -> 7.0: v23 review, 55/70 vs a Stellar/Ren/Varg/Ryth bot, was 43)
+// CI_DRAFT (v39+v41 ladder, 99 Cassi & Issac games, 42% vs 52%: deaths even 12.6 / 10.8, but they clear 58 camps to our
+// 39 - one pick, two farming bodies; 5/18 on 3-champion maps): take Cassi & Issac with our first pick when available.
+inline constexpr bool CI_DRAFT = true;
+// MONO_AVOID (194 monolith-map games, 45%: they clear 0.64 monoliths a game to our 0.02; 28% of our deaths are within 5
+// tiles of a monolith): an awake monolith that is not our target is danger within its reach + 1 in burst_at.
+inline constexpr bool MONO_AVOID = false;
 // Review 2026-10-21: after the Monster + Jungle emblem plan every shard went into Strength/Focus
 // (172 Power Strength shards a game on the ladder): Vesper ended at ~690 Strength and 1385 HP. Buy
 // Power Health shards at this percentage of the Power Strength/Focus shards bought (0 = old build).
@@ -163,13 +169,6 @@ inline constexpr float RAID_MULT = 2.0f;
 inline constexpr bool TRACKING = true;
 inline constexpr int TR_ROUNDS = 16;
 inline constexpr int TR_SLACK = 6;
-// --- v62 (2026-10-27): v43 panel B losses were low-death race games (tempo) ---
-// TR_FIGHT_ONLY: TRACKING's longer, wider enemy memory only on fight-mode maps (MAP_MODES map_mode 1).
-inline constexpr bool TR_FIGHT_ONLY = false;
-// PEEL (ported from v58pl): healthy (>= PEEL_HP) and not outmatched: attack the enemy hitting an ally within PEEL_RANGE.
-inline constexpr bool PEEL = false;
-inline constexpr float PEEL_HP = 0.6f;
-inline constexpr int PEEL_RANGE = 8;
 inline constexpr float OH_MULT = 1.3f;
 // PO_BRUISER (v39 ladder: teams that beat us stack ~74 Bruiser shards a game, teams we beat ~27; Bruiser = 7 shard
 // equivalents per emblem vs Power's 6): after the Jungle opener stack Bruiser instead of Power.

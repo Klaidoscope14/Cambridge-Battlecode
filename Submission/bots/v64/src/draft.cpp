@@ -85,6 +85,13 @@ void play_draft() {
         } catch (...) {
         }
     }
+    if (Cfg::CI_DRAFT && std::find(ours.begin(), ours.end(), CD::cassi_and_issac) == ours.end()) {
+        try {
+            bc::draft::pick(CD::cassi_and_issac);  // throws if the enemy already has it
+            return;
+        } catch (...) {
+        }
+    }
     if (Cfg::TEST_FORCE_RANGED || Cfg::RANGED_META)  // patch 3.0 meta: open Vesper, Tavi, Willow
         for (auto p : {CD::vesper_vale, CD::tavi,
                        Cfg::MELEE_OPENER == 1 ? CD::vendetta : Cfg::MELEE_OPENER == 2 ? CD::marcella : CD::willow})

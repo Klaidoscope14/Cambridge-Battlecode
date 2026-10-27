@@ -71,8 +71,6 @@ class Bot {
     int enemies_dead = 0;   // RAID: enemy champions dead right now
     bool owners_ready = false;
     void set_owners();
-    bool tracking_on() const { return Cfg::TRACKING && (!Cfg::TR_FIGHT_ONLY || map_mode > 0); }
-    bool peel();
     bool tp_shortcut();
     void ward_scout();
     bool ranged = false;
