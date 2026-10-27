@@ -249,6 +249,21 @@ Ordered by current priority.
 
 ---
 
+### v57br on the ranked ladder (ladder v41, first 135 games 27 Oct 02:50-07:10 UTC)
+
+73/135 (54%; v39 49% over 455, v37 45% over 95) against opponents averaging ~1,690; rating 1,626 -> 1,693 (rank 265 ->
+204). Deaths 11.3 vs 10.1 (v39 13.5 vs 8.6), gold@300 940 vs 931 (v39 862 vs 938); ~170 wards and 1.6 teleports a game.
+| Cut | v39 | v41 |
+|---|---|---|
+| vs Stellar | 34% (73) | 62% (24), deaths 8.0 vs 13.4 |
+| vs Cassi & Issac | 42% (77) | 45% (22) |
+| opponent wards >= 250 | 42% (164) | 49% (49) |
+| monolith maps | 44% (147) | 49% (47) |
+| opponent uses teleports | 41% (82) | 45% (22) |
+Still behind: camps cleared 40 vs 50 and gems lost to deaths 119 vs 85. PEEL (v58pl) not uploaded: deaths are near parity.
+Note: /tmp was wiped on 27 Oct (scratchpads and the sprt cache); rollback zips now live in ~/.cache/kessoku_rollback,
+ladder tables in ~/.cache/kessoku_ladder.
+
 ### v54po on the ranked ladder (ladder v39, 435 games 26 Oct 11:40 - 27 Oct 02:00 UTC)
 
 209/435 (48%); rating rose to ~1,717 in the first 50 games (56%) and fell to 1,626 (rank 265). By quarter: 52%, 49%,

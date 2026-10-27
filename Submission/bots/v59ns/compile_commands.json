@@ -1,0 +1,20 @@
+[
+  {
+    "command": "/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/bin/clang++ --target=wasm32-wasip1 --sysroot=/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/wasi-sysroot -DCAMBC_DEBUG -I/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/sdk/cpp -isystem /Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/cmake/../../share/wasi-sysroot/include/wasm32-wasip1/eh/c++/v1 -O3 -DNDEBUG -std=c++20 -msimd128 -mbulk-memory -mbulk-memory-opt -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -o CMakeFiles/bot.dir/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/bot.cpp.obj -c /Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/bot.cpp --sysroot=\"/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/wasi-sysroot\" -isystem \"/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/wasi-sysroot/include/wasm32-wasip1/eh/c++/v1\"",
+    "directory": "/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/.cambc/build",
+    "file": "/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/bot.cpp",
+    "output": "CMakeFiles/bot.dir/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/bot.cpp.obj"
+  },
+  {
+    "command": "/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/bin/clang++ --target=wasm32-wasip1 --sysroot=/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/wasi-sysroot -DCAMBC_DEBUG -I/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/sdk/cpp -isystem /Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/cmake/../../share/wasi-sysroot/include/wasm32-wasip1/eh/c++/v1 -O3 -DNDEBUG -std=c++20 -msimd128 -mbulk-memory -mbulk-memory-opt -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -o CMakeFiles/bot.dir/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/draft.cpp.obj -c /Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/draft.cpp --sysroot=\"/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/wasi-sysroot\" -isystem \"/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/wasi-sysroot/include/wasm32-wasip1/eh/c++/v1\"",
+    "directory": "/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/.cambc/build",
+    "file": "/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/draft.cpp",
+    "output": "CMakeFiles/bot.dir/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/draft.cpp.obj"
+  },
+  {
+    "command": "/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/bin/clang++ --target=wasm32-wasip1 --sysroot=/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/wasi-sysroot -DCAMBC_DEBUG -I/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/sdk/cpp -isystem /Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/cmake/../../share/wasi-sysroot/include/wasm32-wasip1/eh/c++/v1 -O3 -DNDEBUG -std=c++20 -msimd128 -mbulk-memory -mbulk-memory-opt -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -o CMakeFiles/bot.dir/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/main.cpp.obj -c /Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/main.cpp --sysroot=\"/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/wasi-sysroot\" -isystem \"/Users/chaitanyasaagar/Library/Caches/cambc/wasi-sdk-33/share/wasi-sysroot/include/wasm32-wasip1/eh/c++/v1\"",
+    "directory": "/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/.cambc/build",
+    "file": "/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/main.cpp",
+    "output": "CMakeFiles/bot.dir/Users/chaitanyasaagar/Desktop/Cambridge_BattleCode/Submission/bots/v59ns/src/main.cpp.obj"
+  }
+]
