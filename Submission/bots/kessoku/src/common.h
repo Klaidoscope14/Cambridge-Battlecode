@@ -145,6 +145,24 @@ inline constexpr bool NEAR_SWEEP = true;  // groups within NS_RANGE of us score 
 inline constexpr int NS_RANGE = 4;
 inline constexpr float NS_MULT = 2.0f;
 inline constexpr bool OWN_HALF = false;    // groups nearer our spawn than theirs score x OH_MULT
+// --- v60 (2026-10-27): bigger design changes ---
+// Static ownership: each group is ours (walk from our spawn < OWN_RATIO x walk from theirs), theirs (the reverse) or
+// contested. MAP_MODES picks a mode from the map's own geometry (spawn-to-spawn walk) and scores groups by owner:
+// fight maps (walk <= MM_FIGHT_D) farm our half, race maps (walk >= MM_RACE_D) take anything, others lean to ours.
+inline constexpr float OWN_RATIO = 0.8f;
+inline constexpr bool MAP_MODES = true;
+inline constexpr int MM_FIGHT_D = 35;
+inline constexpr int MM_RACE_D = 70;
+// RAID (resource control): while >= RAID_MIN_DEAD enemy champions are dead (alive state is readable out of vision),
+// contested and enemy-owned groups score x RAID_MULT.
+inline constexpr bool RAID = false;
+inline constexpr int RAID_MIN_DEAD = 2;
+inline constexpr float RAID_MULT = 2.0f;
+// TRACKING (unseen enemies): remember an unseen enemy for TR_ROUNDS with up to TR_SLACK tiles of movement, and drop it
+// only when every tile it could have walked to (walls respected) is in vision and empty.
+inline constexpr bool TRACKING = true;
+inline constexpr int TR_ROUNDS = 16;
+inline constexpr int TR_SLACK = 6;
 inline constexpr float OH_MULT = 1.3f;
 // PO_BRUISER (v39 ladder: teams that beat us stack ~74 Bruiser shards a game, teams we beat ~27; Bruiser = 7 shard
 // equivalents per emblem vs Power's 6): after the Jungle opener stack Bruiser instead of Power.

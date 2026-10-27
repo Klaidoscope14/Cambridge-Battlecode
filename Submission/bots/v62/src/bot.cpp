@@ -459,6 +459,29 @@ std::optional<bc::item_type> Bot::next_item() const {
     return focus ? I::power_shard_of_focus : I::power_shard_of_strength;
 }
 
+bool Bot::peel() {
+    auto& me = bc::self();
+    if (my_hp < Cfg::PEEL_HP * my_max || foes.empty() || outmatched || me.gem_count() >= 30) return false;
+    const Foe* best = nullptr;
+    int best_d = 99;
+    for (const auto& f : foes) {
+        if (f.weight < 1.f || enemy_spawn.is_set(f.pos)) continue;
+        bool hitting = false;
+        for (const auto& m : mates)
+            hitting = hitting || (cheb(m.pos, pos) <= Cfg::PEEL_RANGE && cheb(m.pos, f.pos) <= (f.ranged ? 3 : 1) && m.hp < m.max_hp);
+        if (!hitting) continue;
+        if (side_power(f.pos, true) > side_power(f.pos, false)) continue;  // their side wins there
+        const int d = cheb(f.pos, pos);
+        if (d < best_d) best_d = d, best = &f;
+    }
+    if (!best) return false;
+    const vec2 at = best->pos;
+    fight_enemies();
+    if (me.can_move() && !acted_attack) move_to(square(at, static_cast<int>(me.attack_range())) & ~terrain);
+    if (!acted_attack) fight_enemies();
+    return true;
+}
+
 void Bot::set_owners() {
     owners_ready = true;
     if (!enemy_field_ready) {
@@ -1111,8 +1134,8 @@ void Bot::assess_threat() {
         for (auto& g : ghosts) {
             if (g.seen == round) continue;
             const int age = round - g.seen;
-            g.slack = std::min(age, Cfg::GHOST_MAX_SLACK);
-            g.weight = 1.f - static_cast<float>(age) / (Cfg::GHOST_ROUNDS + 1);
+            g.slack = std::min(age, tracking_on() ? Cfg::TR_SLACK : Cfg::GHOST_MAX_SLACK);
+            g.weight = 1.f - static_cast<float>(age) / ((tracking_on() ? Cfg::TR_ROUNDS : Cfg::GHOST_ROUNDS) + 1);
         }
         // Alive state is readable out of vision: a dead enemy is not lurking.
         std::vector<int> dead;
@@ -1121,8 +1144,9 @@ void Bot::assess_threat() {
                 if (!e.is_alive()) dead.push_back(static_cast<int>(e.champion_name()));
         std::erase_if(ghosts, [&](const Foe& g) {
             if (g.seen == round) return false;
-            if (round - g.seen > Cfg::GHOST_ROUNDS) return true;
+            if (round - g.seen > (tracking_on() ? Cfg::TR_ROUNDS : Cfg::GHOST_ROUNDS)) return true;
             if (std::find(dead.begin(), dead.end(), g.type) != dead.end()) return true;
+            if (tracking_on()) return (terrain.reachable_tiles(g.pos, static_cast<std::uint16_t>(g.slack)) & ~visible_now).is_empty();
             return (square(g.pos, g.slack) & ~visible_now & ~terrain).is_empty();  // area seen, nobody there
         });
         use_ghosts = bc::self().gem_count() >= static_cast<unsigned>(Cfg::GHOST_MIN_BAG);
@@ -2627,6 +2651,7 @@ void Bot::play_turn() {
             return;
         }
     }
+    if (Cfg::PEEL && !fighting && peel()) return;
     if constexpr (Cfg::CONVERGE)
         if (!fighting && capture_group < 0 && converge()) return;
     if (capture_group < 0 && deny()) return;

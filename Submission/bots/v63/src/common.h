@@ -144,13 +144,13 @@ inline constexpr bool TEAM_CLOSEOUT = true;
 inline constexpr bool NEAR_SWEEP = true;  // groups within NS_RANGE of us score x NS_MULT
 inline constexpr int NS_RANGE = 4;
 inline constexpr float NS_MULT = 2.0f;
-inline constexpr bool OWN_HALF = false;    // groups nearer our spawn than theirs score x OH_MULT
+inline constexpr bool OWN_HALF = true;    // groups nearer our spawn than theirs score x OH_MULT
 // --- v60 (2026-10-27): bigger design changes ---
 // Static ownership: each group is ours (walk from our spawn < OWN_RATIO x walk from theirs), theirs (the reverse) or
 // contested. MAP_MODES picks a mode from the map's own geometry (spawn-to-spawn walk) and scores groups by owner:
 // fight maps (walk <= MM_FIGHT_D) farm our half, race maps (walk >= MM_RACE_D) take anything, others lean to ours.
 inline constexpr float OWN_RATIO = 0.8f;
-inline constexpr bool MAP_MODES = false;
+inline constexpr bool MAP_MODES = true;
 inline constexpr int MM_FIGHT_D = 35;
 inline constexpr int MM_RACE_D = 70;
 // RAID (resource control): while >= RAID_MIN_DEAD enemy champions are dead (alive state is readable out of vision),
@@ -163,6 +163,13 @@ inline constexpr float RAID_MULT = 2.0f;
 inline constexpr bool TRACKING = true;
 inline constexpr int TR_ROUNDS = 16;
 inline constexpr int TR_SLACK = 6;
+// --- v62 (2026-10-27): v43 panel B losses were low-death race games (tempo) ---
+// TR_FIGHT_ONLY: TRACKING's longer, wider enemy memory only on fight-mode maps (MAP_MODES map_mode 1).
+inline constexpr bool TR_FIGHT_ONLY = false;
+// PEEL (ported from v58pl): healthy (>= PEEL_HP) and not outmatched: attack the enemy hitting an ally within PEEL_RANGE.
+inline constexpr bool PEEL = true;
+inline constexpr float PEEL_HP = 0.6f;
+inline constexpr int PEEL_RANGE = 8;
 inline constexpr float OH_MULT = 1.3f;
 // PO_BRUISER (v39 ladder: teams that beat us stack ~74 Bruiser shards a game, teams we beat ~27; Bruiser = 7 shard
 // equivalents per emblem vs Power's 6): after the Jungle opener stack Bruiser instead of Power.

@@ -150,14 +150,26 @@ inline constexpr bool OWN_HALF = false;    // groups nearer our spawn than their
 // contested. MAP_MODES picks a mode from the map's own geometry (spawn-to-spawn walk) and scores groups by owner:
 // fight maps (walk <= MM_FIGHT_D) farm our half, race maps (walk >= MM_RACE_D) take anything, others lean to ours.
 inline constexpr float OWN_RATIO = 0.8f;
-inline constexpr bool MAP_MODES = false;
+inline constexpr bool MAP_MODES = true;
 inline constexpr int MM_FIGHT_D = 35;
 inline constexpr int MM_RACE_D = 70;
 // RAID (resource control): while >= RAID_MIN_DEAD enemy champions are dead (alive state is readable out of vision),
 // contested and enemy-owned groups score x RAID_MULT.
-inline constexpr bool RAID = true;
+inline constexpr bool RAID = false;
 inline constexpr int RAID_MIN_DEAD = 2;
 inline constexpr float RAID_MULT = 2.0f;
+// TRACKING (unseen enemies): remember an unseen enemy for TR_ROUNDS with up to TR_SLACK tiles of movement, and drop it
+// only when every tile it could have walked to (walls respected) is in vision and empty.
+inline constexpr bool TRACKING = true;
+inline constexpr int TR_ROUNDS = 16;
+inline constexpr int TR_SLACK = 6;
+// --- v62 (2026-10-27): v43 panel B losses were low-death race games (tempo) ---
+// TR_FIGHT_ONLY: TRACKING's longer, wider enemy memory only on fight-mode maps (MAP_MODES map_mode 1).
+inline constexpr bool TR_FIGHT_ONLY = false;
+// PEEL (ported from v58pl): healthy (>= PEEL_HP) and not outmatched: attack the enemy hitting an ally within PEEL_RANGE.
+inline constexpr bool PEEL = false;
+inline constexpr float PEEL_HP = 0.6f;
+inline constexpr int PEEL_RANGE = 8;
 inline constexpr float OH_MULT = 1.3f;
 // PO_BRUISER (v39 ladder: teams that beat us stack ~74 Bruiser shards a game, teams we beat ~27; Bruiser = 7 shard
 // equivalents per emblem vs Power's 6): after the Jungle opener stack Bruiser instead of Power.
