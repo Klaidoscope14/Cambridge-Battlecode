@@ -22,6 +22,7 @@ struct Group {
     int respawn_at = 0;    // round the group is back, 0 = assumed up
     bool reward = false;   // monsters dead, capture pending
     int skip_until = 0;    // personal cooldown after a wasted trip
+    int owner = 0;         // static ownership: +1 ours, -1 theirs, 0 contested (v60)
 };
 
 // What one visible enemy champion can do to us on its next turn.
@@ -66,6 +67,10 @@ class Bot {
     bool ia_skip_treasure = false, ia_skip_camp_items = false;  // ITEM_ADAPT: decided once from map geometry
     bool cluster_rich = false, wall_map = false;  // PROSPECTOR_MAPS / TP_SHORTCUT
     int last_ward_round = -1000;
+    int map_mode = 0;       // MAP_MODES: 1 fight, -1 race, 0 normal
+    int enemies_dead = 0;   // RAID: enemy champions dead right now
+    bool owners_ready = false;
+    void set_owners();
     bool tp_shortcut();
     void ward_scout();
     bool ranged = false;

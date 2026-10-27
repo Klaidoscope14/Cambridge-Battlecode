@@ -459,6 +459,22 @@ std::optional<bc::item_type> Bot::next_item() const {
     return focus ? I::power_shard_of_focus : I::power_shard_of_strength;
 }
 
+void Bot::set_owners() {
+    owners_ready = true;
+    if (!enemy_field_ready) {
+        bitboard visited;
+        enemy_field.compute(terrain & ~enemy_spawn, enemy_spawn, visited);
+        enemy_field_ready = true;
+    }
+    for (auto& g : groups) {
+        const float s = static_cast<float>(spawn_field.get(g.tiles.front())), e = static_cast<float>(enemy_field.get(g.tiles.front()));
+        g.owner = s < Cfg::OWN_RATIO * e ? 1 : e < Cfg::OWN_RATIO * s ? -1 : 0;
+    }
+    int walk = UNREACH;
+    for (auto t : enemy_spawn.positions()) walk = std::min(walk, static_cast<int>(spawn_field.get(t)));
+    map_mode = walk <= Cfg::MM_FIGHT_D ? 1 : walk >= Cfg::MM_RACE_D && walk < UNREACH ? -1 : 0;
+}
+
 bool Bot::tp_shortcut() {
     if (!wall_map || target < 0 || !foes.empty()) return false;
     auto& me = bc::self();
@@ -800,6 +816,11 @@ float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* 
     float time = dist + kill + bc::constants::capture_time + std::max(0, g.respawn_at - round - dist);
     if (Cfg::LESS_WAIT && req > 0) time += Cfg::LW_TIME_PENALTY * std::max(0, req - allies_near(g));
     if (Cfg::NEAR_SWEEP && dist <= Cfg::NS_RANGE) value *= Cfg::NS_MULT;
+    if (Cfg::MAP_MODES) {
+        if (g.owner > 0) value *= map_mode > 0 ? 1.3f : map_mode < 0 ? 1.f : 1.15f;
+        else if (g.owner < 0) value *= map_mode > 0 ? 0.6f : map_mode < 0 ? 1.f : 0.85f;
+    }
+    if (Cfg::RAID && enemies_dead >= Cfg::RAID_MIN_DEAD && g.owner <= 0) value *= Cfg::RAID_MULT;
     if (Cfg::OWN_HALF) {
         if (!enemy_field_ready) {
             bitboard visited;
@@ -2430,6 +2451,12 @@ void Bot::play_turn() {
     dead_noted = false;
     g_stage = "observe";
     observe();
+    if ((Cfg::MAP_MODES || Cfg::RAID) && !owners_ready) set_owners();
+    if (Cfg::RAID) {
+        enemies_dead = 0;
+        for (const auto& e : bc::champions(team::enemy))
+            if (!e.is_alive()) ++enemies_dead;
+    }
     struct HpMark { Bot* b; ~HpMark() { b->prev_hp = bc::self().health(); b->build_group_fields(); } } hp_mark_{this};
     if (Cfg::SCORE_POLICY) {
         const int gap = static_cast<int>(bc::global_submitted_gems(team::ally)) - static_cast<int>(bc::global_submitted_gems(team::enemy));

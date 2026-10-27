@@ -37,7 +37,7 @@ inline constexpr float FIGHT_HP_MARGIN = 0.20f;  // keep this much HP after a ca
 // Target selection.
 inline constexpr float GOLD_WEIGHT = 0.12f;
 inline constexpr float CLAIMED_PENALTY = 0.30f;
-inline constexpr float CLUSTER_VALUE = 2.0f;  // v59cl: 2.0  // value multiplier for monster-free cluster groups (0.5: 36/70, off)
+inline constexpr float CLUSTER_VALUE = 1.0f;  // v59cl: 2.0  // value multiplier for monster-free cluster groups (0.5: 36/70, off)
 inline constexpr float ENEMY_NEAR_PENALTY = 0.40f;
 inline constexpr float SWITCH_MARGIN = 1.30f;
 inline constexpr int RETARGET_EVERY = 4;  // rounds between full target re-scores
@@ -141,10 +141,28 @@ inline constexpr bool TEAM_CLOSEOUT = true;
 // --- v59 (2026-10-27): clear speed. v41 ladder losses: the enemy clears 27.7 clusters / 12.5 wolf groups a game to
 // our 10.3 / 7.3, and 48 camps on its own half to our 23; we favour big elk/golem groups. Score = value / (time + 4)
 // with a 5-turn capture in every time, so a cheap camp nearby scores far below a big group.
-inline constexpr bool NEAR_SWEEP = false;  // groups within NS_RANGE of us score x NS_MULT
+inline constexpr bool NEAR_SWEEP = true;  // groups within NS_RANGE of us score x NS_MULT
 inline constexpr int NS_RANGE = 4;
 inline constexpr float NS_MULT = 2.0f;
 inline constexpr bool OWN_HALF = false;    // groups nearer our spawn than theirs score x OH_MULT
+// --- v60 (2026-10-27): bigger design changes ---
+// Static ownership: each group is ours (walk from our spawn < OWN_RATIO x walk from theirs), theirs (the reverse) or
+// contested. MAP_MODES picks a mode from the map's own geometry (spawn-to-spawn walk) and scores groups by owner:
+// fight maps (walk <= MM_FIGHT_D) farm our half, race maps (walk >= MM_RACE_D) take anything, others lean to ours.
+inline constexpr float OWN_RATIO = 0.8f;
+inline constexpr bool MAP_MODES = false;
+inline constexpr int MM_FIGHT_D = 35;
+inline constexpr int MM_RACE_D = 70;
+// RAID (resource control): while >= RAID_MIN_DEAD enemy champions are dead (alive state is readable out of vision),
+// contested and enemy-owned groups score x RAID_MULT.
+inline constexpr bool RAID = false;
+inline constexpr int RAID_MIN_DEAD = 2;
+inline constexpr float RAID_MULT = 2.0f;
+// TRACKING (unseen enemies): remember an unseen enemy for TR_ROUNDS with up to TR_SLACK tiles of movement, and drop it
+// only when every tile it could have walked to (walls respected) is in vision and empty.
+inline constexpr bool TRACKING = true;
+inline constexpr int TR_ROUNDS = 16;
+inline constexpr int TR_SLACK = 6;
 inline constexpr float OH_MULT = 1.3f;
 // PO_BRUISER (v39 ladder: teams that beat us stack ~74 Bruiser shards a game, teams we beat ~27; Bruiser = 7 shard
 // equivalents per emblem vs Power's 6): after the Jungle opener stack Bruiser instead of Power.

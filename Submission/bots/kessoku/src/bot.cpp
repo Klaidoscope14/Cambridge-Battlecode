@@ -799,6 +799,15 @@ float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* 
         }
     float time = dist + kill + bc::constants::capture_time + std::max(0, g.respawn_at - round - dist);
     if (Cfg::LESS_WAIT && req > 0) time += Cfg::LW_TIME_PENALTY * std::max(0, req - allies_near(g));
+    if (Cfg::NEAR_SWEEP && dist <= Cfg::NS_RANGE) value *= Cfg::NS_MULT;
+    if (Cfg::OWN_HALF) {
+        if (!enemy_field_ready) {
+            bitboard visited;
+            const_cast<Bot*>(this)->enemy_field.compute(terrain & ~enemy_spawn, enemy_spawn, visited);
+            const_cast<Bot*>(this)->enemy_field_ready = true;
+        }
+        if (spawn_field.get(g.tiles.front()) < enemy_field.get(g.tiles.front())) value *= Cfg::OH_MULT;
+    }
     if (value_out) *value_out = value;
     if (time_out) *time_out = time;
     return value / (time + 4.f);
