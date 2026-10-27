@@ -214,3 +214,8 @@ __marimo__/
 graphify-out/
 Submission/.tmp*
 Submission/*-submission.zip
+
+# Local editor / agent folders
+.vscode/
+.claude/
+agent/
