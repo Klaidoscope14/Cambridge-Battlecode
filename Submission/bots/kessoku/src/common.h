@@ -108,6 +108,39 @@ inline constexpr float PAIR_DRAFT_SCORE = 7.0f;      // draft value of the pick 
 // pair at 7.0, vs v23 45/70 (deaths 548 vs 895), field proxy zmeta 53/70 (= v23, deaths 595 -> 382),
 // zpoke 33 -> 48, zhor 56 -> 61, zlock2 64 -> 66, zcamp/oldpy 70, starter-cpp 69.
 inline constexpr int HEALTH_PCT = 100;
+// POWER_OPENER (v38 ladder: on the 17 maps we always lost, the enemy cleared 56 camps to our 32 and opened Jungle
+// Strength/Focus + Power Strength/Focus before r400, while teams we beat open Treasure/Bruiser like us): open with the
+// Jungle emblem of our damage stat, then stack Power (no Treasure, Monster or Bruiser), PO_HEALTH_PCT Health shards
+// per 100 damage shards.
+inline constexpr bool POWER_OPENER = true;
+inline constexpr int PO_HEALTH_PCT = 50;
+// --- v56 (2026-10-27): wards, Cassi & Issac, patch emblems, monoliths, teleports, close-out ---
+// WARD_SCOUT: every WS_EVERY rounds while farming a target with no enemy in sight, place a ward on the tile in reach
+// that is nearest the enemy spawn and within WS_TARGET_R of the target, so invaders enter our vision (foes, danger map,
+// HP_RATIO_GUARD, PAIRING, SAFE_ALTARS) earlier.
+inline constexpr bool WARD_SCOUT = true;
+inline constexpr int WS_EVERY = 10;
+inline constexpr int WS_TARGET_R = 8;
+// CI_FOCUS: one Cassi or Issac death kills both halves, so they are worth double: focus the weaker half.
+inline constexpr bool CI_FOCUS = false;
+inline constexpr float CI_BONUS = 0.5f;
+// CAPTURE_FIRST: open with the Capture emblem (captures take 3 turns instead of 5 while any capturer owns one).
+inline constexpr bool CAPTURE_FIRST = false;
+// PROSPECTOR_MAPS: open with Prospector (+25% cluster gold and gems) when >= PM_MIN_CLUSTER of the map's gems are in
+// monster-free clusters.
+inline constexpr bool PROSPECTOR_MAPS = true;
+inline constexpr float PM_MIN_CLUSTER = 0.30f;
+// TP_SHORTCUT: on maps with walls, keep one teleport crystal and use it (no enemy in sight) when a tile within 3 cuts
+// the walk to the target by >= TP_GAIN + the channel time.
+inline constexpr bool TP_SHORTCUT = true;
+inline constexpr int TP_GAIN = 6;
+inline constexpr float TP_MIN_WALLS = 0.03f;  // wall share of the map
+inline constexpr int TP_MIN_GOLD = 300;       // only buy with this much gold in hand
+// TEAM_CLOSEOUT: bank any bag once tributed gems + our bag + visible allies' bags reach the winning total.
+inline constexpr bool TEAM_CLOSEOUT = true;
+// PO_BRUISER (v39 ladder: teams that beat us stack ~74 Bruiser shards a game, teams we beat ~27; Bruiser = 7 shard
+// equivalents per emblem vs Power's 6): after the Jungle opener stack Bruiser instead of Power.
+inline constexpr bool PO_BRUISER = true;
 // Patch 3.0 (cambc 3.0.2, 2026-10-21), measured on the 35-map pool vs the v22 logic:
 // - Heart of Ruin drafted at 10.0 / 9.0: 29/70 each (our bots retreat at 30% HP, so its
 //   missing-health bonus never kicks in) -> not drafted. The old draft loop stopped at 11

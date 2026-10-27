@@ -140,6 +140,17 @@ void Bot::init() {
         ia_skip_treasure = income < Cfg::IA_MIN_INCOME;
         ia_skip_camp_items = gems > 0.f && fight_gems / gems < Cfg::IA_MIN_FIGHT;
     }
+    {
+        float gems = 0.f, cl = 0.f;
+        for (const auto& g : groups) {
+            gems += static_cast<float>(g.gems);
+            if (g.strength <= 0.f) cl += static_cast<float>(g.gems);
+        }
+        cluster_rich = gems > 0.f && cl / gems >= Cfg::PM_MIN_CLUSTER;
+        int walls = 0;
+        for (auto t : bc::map::walls().positions()) (void)t, ++walls;
+        wall_map = static_cast<float>(walls) >= Cfg::TP_MIN_WALLS * static_cast<float>(W * H);
+    }
 
     ranged = me.attack_range() > 1;
     last_gems = me.gem_count();
@@ -380,8 +391,19 @@ std::optional<bc::item_type> Bot::next_item() const {
         const auto owned = bc::self().item_count();
         const bool focus_po = kind == bc::champion_type::stellar || kind == bc::champion_type::prism
             || kind == bc::champion_type::cassi;
+        if (Cfg::CAPTURE_FIRST && owned[focus_po ? I::capture_emblem_of_focus : I::capture_emblem_of_strength] == 0)
+            return focus_po ? I::capture_shard_of_focus : I::capture_shard_of_strength;
+        if (Cfg::PROSPECTOR_MAPS && cluster_rich && owned[focus_po ? I::prospector_emblem_of_focus : I::prospector_emblem_of_strength] == 0)
+            return focus_po ? I::prospector_shard_of_focus : I::prospector_shard_of_strength;
         if (owned[focus_po ? I::jungle_emblem_of_focus : I::jungle_emblem_of_strength] == 0)
             return focus_po ? I::jungle_shard_of_focus : I::jungle_shard_of_strength;
+        if (Cfg::PO_BRUISER) {
+            const int atk = static_cast<int>(owned[I::bruiser_emblem_of_strength] + owned[I::bruiser_emblem_of_focus]) * 5
+                + static_cast<int>(owned[I::bruiser_shard_of_strength] + owned[I::bruiser_shard_of_focus]);
+            const int hp_sh = static_cast<int>(owned[I::bruiser_emblem_of_health]) * 5 + static_cast<int>(owned[I::bruiser_shard_of_health]);
+            if (hp_sh * 100 < Cfg::PO_HEALTH_PCT * atk + 50) return I::bruiser_shard_of_health;
+            return focus_po ? I::bruiser_shard_of_focus : I::bruiser_shard_of_strength;
+        }
         const int atk = static_cast<int>(owned[I::power_emblem_of_strength] + owned[I::power_emblem_of_focus]) * 6
             + static_cast<int>(owned[I::power_shard_of_strength] + owned[I::power_shard_of_focus]);
         const int hp_sh = static_cast<int>(owned[I::power_emblem_of_health]) * 6 + static_cast<int>(owned[I::power_shard_of_health]);
@@ -437,12 +459,68 @@ std::optional<bc::item_type> Bot::next_item() const {
     return focus ? I::power_shard_of_focus : I::power_shard_of_strength;
 }
 
+bool Bot::tp_shortcut() {
+    if (!wall_map || target < 0 || !foes.empty()) return false;
+    auto& me = bc::self();
+    const auto t = static_cast<std::size_t>(target);
+    if (t >= gfield_ok.size() || !gfield_ok[t]) return false;
+    try {
+        auto& tp = me.consumables()[bc::consumable_type::tp_crystal];
+        if (tp.count() == 0) return false;
+        const int now = static_cast<int>(gfield[t].get(pos));
+        if (now >= UNREACH) return false;
+        vec2 best = pos;
+        int best_d = now;
+        for (auto c : (square(pos, 3) & ~terrain).positions()) {
+            if (bc::vision::has_champion(c)) continue;
+            const int d = static_cast<int>(gfield[t].get(c));
+            if (d < best_d) best_d = d, best = c;
+        }
+        if (best == pos || now - best_d < Cfg::TP_GAIN + bc::constants::tp_crystal_time) return false;
+        return tp.use(best);
+    } catch (...) {
+        return false;
+    }
+}
+
+void Bot::ward_scout() {
+    if (target < 0 || !foes.empty() || round - last_ward_round < Cfg::WS_EVERY) return;
+    auto& me = bc::self();
+    if (!enemy_field_ready) {
+        bitboard visited;
+        enemy_field.compute(terrain & ~enemy_spawn, enemy_spawn, visited);
+        enemy_field_ready = true;
+    }
+    const vec2 aim = groups[static_cast<std::size_t>(target)].tiles.front();
+    try {
+        vec2 best = pos;
+        int best_d = UNREACH;
+        for (auto c : (me.ward_placement_tiles() & ~terrain).positions()) {
+            if (cheb(c, aim) > Cfg::WS_TARGET_R) continue;
+            const int d = static_cast<int>(enemy_field.get(c));
+            if (d < best_d) best_d = d, best = c;
+        }
+        if (best_d >= UNREACH) return;
+        if (me.place_ward(best)) last_ward_round = round;
+    } catch (...) {
+        last_ward_round = round;  // no charge or a bad tile: try again later
+    }
+}
+
 void Bot::shop() {
     auto& me = bc::self();
     const auto lock = bc::consumable_type::altar_lock;
     if (me.gold_count() >= static_cast<unsigned>(Cfg::LOCK_MIN_GOLD) && me.consumables()[lock].count() == 0
         && me.can_buy(lock))
         me.buy(lock);
+    if (Cfg::TP_SHORTCUT && wall_map) {
+        const auto tp = bc::consumable_type::tp_crystal;
+        try {
+            if (me.gold_count() >= static_cast<unsigned>(Cfg::TP_MIN_GOLD) && me.consumables()[tp].count() == 0 && me.can_buy(tp))
+                me.buy(tp);
+        } catch (...) {
+        }
+    }
     for (int i = 0; i < 12; ++i) {
         const auto item = next_item();
         if (!item || me.gold_count() < item->cost() || !me.can_buy(*item)) break;
@@ -1411,6 +1489,13 @@ bool Bot::fight_enemies(bool kills_only) {
         if (f.hp <= burst) s += 10.f;
         if (Cfg::BREAK_CHANNELS && f.channel == Channel::RECALL) s += Cfg::BREAK_RECALL;  // any hit cancels it
         if (f.channel == Channel::TRIBUTE) s += f.gems / 50.f;  // standing still with a bag
+        if (Cfg::CI_FOCUS && (f.type == static_cast<int>(bc::champion_type::cassi) || f.type == static_cast<int>(bc::champion_type::issac))) {
+            s += Cfg::CI_BONUS;
+            for (const auto& o : foes)
+                if (&o != &f && (o.type == static_cast<int>(bc::champion_type::cassi) || o.type == static_cast<int>(bc::champion_type::issac))
+                    && o.hp > f.hp)
+                    s += Cfg::CI_BONUS;  // the weaker half: its death takes the other one too
+        }
         return s;
     };
     std::vector<const Foe*> order;
@@ -1995,6 +2080,11 @@ bool Bot::should_bank() const {
     if (bc::global_submitted_gems(team::ally) + bag >= bc::constants::winning_gems) return true;  // the bag wins: always try
     if (Cfg::BLOCKED_ALTAR_FARM && round < bank_blocked_until) return false;  // no way to an altar: keep earning gold
     if (round + 40 >= static_cast<int>(bc::constants::max_rounds)) return true;
+    if (Cfg::TEAM_CLOSEOUT) {
+        int total = static_cast<int>(bc::global_submitted_gems(team::ally)) + bag;
+        for (const auto& m : mates) total += m.gems;
+        if (total >= static_cast<int>(bc::constants::winning_gems)) return true;
+    }
     const bool carrier = Cfg::PRISM_CARRIER && kind == bc::champion_type::prism;
     const bool quiet = round - last_foe_round > Cfg::PRISM_SAFE_ROUNDS;
     int threshold = carrier && quiet ? Cfg::PRISM_BANK_BAG : Cfg::BANK_BAG;
@@ -2505,6 +2595,8 @@ void Bot::play_turn() {
         if (!fighting && capture_group < 0 && converge()) return;
     if (capture_group < 0 && deny()) return;
     if (!fighting && capture_group < 0 && answer_help()) return;
+    if (Cfg::TP_SHORTCUT && tp_shortcut()) return;
+    if (Cfg::WARD_SCOUT) ward_scout();
     g_stage = "farm";
     farm();
     g_stage = "turn:done";

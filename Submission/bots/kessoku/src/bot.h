@@ -64,6 +64,10 @@ class Bot {
     int partner_type = -1, partner_body = 0;
     int bodies = 1;        // allied champion bodies (Cassi & Issac count twice)
     bool ia_skip_treasure = false, ia_skip_camp_items = false;  // ITEM_ADAPT: decided once from map geometry
+    bool cluster_rich = false, wall_map = false;  // PROSPECTOR_MAPS / TP_SHORTCUT
+    int last_ward_round = -1000;
+    bool tp_shortcut();
+    void ward_scout();
     bool ranged = false;
     bc::champion_type kind{};
 
