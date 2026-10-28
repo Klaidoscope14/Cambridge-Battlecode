@@ -473,6 +473,11 @@ void Bot::set_owners() {
     int walk = UNREACH;
     for (auto t : enemy_spawn.positions()) walk = std::min(walk, static_cast<int>(spawn_field.get(t)));
     map_mode = walk <= Cfg::MM_FIGHT_D ? 1 : walk >= Cfg::MM_RACE_D && walk < UNREACH ? -1 : 0;
+    if (Cfg::SELECTIVE_GOLD) {
+        float gold = 0.f, gems = 0.f;
+        for (const auto& g : groups) gold += static_cast<float>(g.gold), gems += static_cast<float>(g.gems);
+        map_gold_per_gem = gold / std::max(gems, 1.f);
+    }
 }
 
 bool Bot::tp_shortcut() {
@@ -797,7 +802,13 @@ float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* 
 
     const float hp = g.reward ? 0.f : group_hp(id);
     const float kill = hp / (my_dps(g) * (1 + crew));
-    float value = g.gems + Cfg::GOLD_WEIGHT * g.gold;
+    float gold_w = Cfg::GOLD_EARLY && (round < 300 || g.gems == 0) ? 0.25f : Cfg::GOLD_WEIGHT;
+    if (Cfg::SELECTIVE_GOLD) {
+        if (g.gems == 0 && g.gold > 0 && round < 400) gold_w = 0.28f;
+        else if (g.gems > 0 && round < 300 && map_mode >= 0 && map_gold_per_gem >= 4.5f) gold_w = 0.20f;
+    }
+    float value = g.gems + gold_w * g.gold;
+    if (Cfg::EARLY_TEMPO && round < 250 && g.hp <= 2700.f) value *= 1.6f;
     if (g.strength <= 0.f) value *= Cfg::CLUSTER_VALUE;  // 120-HP clusters (patch 3.0) kill fast but pay little
     if (g.strength <= 0.f && claims > 0) value *= Cfg::CLAIMED_PENALTY;
     else if (crew > 0) value /= static_cast<float>(1 + crew);
@@ -1153,12 +1164,15 @@ void Bot::assess_threat() {
             float ohp = my_hp, odps = bc::self().strength() + 0.25f * bc::self().focus(), ehp = 0.f, edps = 0.f, emax = 0.f;
             int on = 1, en = 0, stun = 0, dash = 0, reset = 0, rng = 0;
             for (const auto& m : mates)
-                if (cheb(m.pos, pos) <= Cfg::SKIRMISH_RANGE) ohp += m.hp, odps += m.power, ++on;
+                if (cheb(m.pos, pos) <= (Cfg::NEAR_ALLY_FIT ? 4 : Cfg::SKIRMISH_RANGE)) ohp += m.hp, odps += m.power, ++on;
             for (const auto& f : foes)
                 if (cheb(f.pos, pos) <= Cfg::SKIRMISH_RANGE) {
                     ehp += f.hp, emax += f.max_hp, edps += f.strength + f.spell / 8.f, ++en;
                     stun += f.stun, dash += f.dash, reset += f.reset, rng += f.ranged;
                 }
+            if (Cfg::CAMP_GANK_GUARD && nearest <= 5)  // a camp still hitting us fights on their side
+                for (const auto& c : camps)
+                    if (!c.is_dead() && c.is_awake() && !c.is_monolith() && cheb(c.position(), pos) <= spec_of(c).reach) edps += c.strength();
             auto lg = [](float x) { return std::log(std::max(x, 1e-3f)); };
             const float x[12] = {lg(ohp / std::max(ehp, 1.f)), lg(odps / std::max(edps, 1.f)), static_cast<float>(on - en),
                                  static_cast<float>(stun), static_cast<float>(dash), static_cast<float>(reset), my_hp / my_max,
@@ -1229,6 +1243,15 @@ void Bot::ensure_danger() {
 // gets one cast, so a reset, a dash and a spell are alternatives, not a sum.
 float Bot::burst_at(vec2 p) const {
     float total = 0.f;
+    if (Cfg::CAMP_GANK_GUARD && !foes.empty())  // an awake camp hits the nearest champion: us, if we are nearer than they are
+        for (const auto& c : camps) {
+            if (c.is_dead() || !c.is_awake() || c.is_monolith() || c.strength() <= 0.f) continue;
+            const int d = cheb(c.position(), p);
+            if (d > spec_of(c).reach) continue;
+            int theirs = 99;
+            for (const auto& f : foes) theirs = std::min(theirs, cheb(f.pos, c.position()));
+            if (d <= theirs) total += c.strength();
+        }
     if (Cfg::MONO_AVOID)
         for (const auto& c : camps)
             if (c.is_monolith() && c.is_awake() && !c.is_dead() && group_of(c.spawn_position()) != target
@@ -1378,14 +1401,22 @@ bool Bot::flight_futile() const {
 
 bool Bot::converge() {
     auto& me = bc::self();
-    if (my_hp < 0.5f * my_max || me.gem_count() >= 30 || foes.empty()) return false;
+    if (my_hp < 0.5f * my_max || me.gem_count() >= (Cfg::CONVERGE_WIDE ? 45u : 30u) || foes.empty()) return false;
     const Foe* best = nullptr;
     for (const auto& f : foes) {
         if (cheb(f.pos, pos) > 9) continue;
         if (Cfg::CONVERGE_FIX && enemy_spawn.is_set(f.pos)) continue;  // unreachable and healed every turn
+        if (Cfg::CONVERGE_WIDE && me.gem_count() >= 30) {  // a 30-44 bag only defends our own half
+            if (!enemy_field_ready) {
+                bitboard visited;
+                enemy_field.compute(terrain & ~enemy_spawn, enemy_spawn, visited);
+                enemy_field_ready = true;
+            }
+            if (!(spawn_field.get(f.pos) < enemy_field.get(f.pos))) continue;
+        }
         bool mate_in = false, rescue = false;
         for (const auto& m : mates) {
-            mate_in = mate_in || cheb(m.pos, f.pos) <= 4;
+            mate_in = mate_in || cheb(m.pos, f.pos) <= (Cfg::CONVERGE_WIDE ? 5 : 4);
             if (Cfg::RESCUE && cheb(m.pos, f.pos) <= 2 && m.hp < 0.7f * m.max_hp) rescue = true;
         }
         if (rescue) {
@@ -1407,6 +1438,21 @@ bool Bot::converge() {
 
 bool Bot::escape() {
     auto& me = bc::self();
+    if (Cfg::ESCAPE_SUPPORT && me.can_cast() && me.can_move()) {  // stun the nearest chaser with a walk-compatible cast
+        for (const auto& ab : me.abilities()) {
+            try {
+                if (!ab.is_ready() || !ab.is_cc() || !ab.can_target_enemies()) continue;
+                const auto& info = ab.info();
+                if (!info || std::visit([](const auto& v) { return v.exclusive_with_movement; }, *info)) continue;
+                const auto tiles = ab.valid_tiles();
+                const Foe* best = nullptr;
+                for (const auto& f : foes)
+                    if (f.weight >= 1.f && tiles.is_set(f.pos) && (!best || cheb(f.pos, pos) < cheb(best->pos, pos))) best = &f;
+                if (best && ab.use(enemies[static_cast<std::size_t>(best->index)])) break;
+            } catch (...) {
+            }
+        }
+    }
     const bool lethal = burst_here * Cfg::LETHAL_MARGIN >= my_hp;
     if constexpr (Cfg::STAND_SHOOT)
         if (!acted_attack && flight_futile() && fight_enemies()) return true;
@@ -1421,7 +1467,7 @@ bool Bot::escape() {
     }
     if (me.gem_count() > 0 && !lethal && me.gem_count() <= 20)
         for (auto a : altar_tiles)
-            if (cheb(a, pos) <= bc::constants::submit_gems_range && !(bc::vision::has_altar_lock(a) && (!Cfg::FIX_LOCK_EARLY || bc::vision::altar_lock_at(a).is_enemy()))) {
+            if (cheb(a, pos) <= bc::constants::submit_gems_range && !(bc::vision::has_altar_lock(a) && (!(Cfg::FIX_LOCK_EARLY || Cfg::OWN_LOCK_OK) || bc::vision::altar_lock_at(a).is_enemy()))) {
                 try {
                     me.submit_gems(a);
                     return true;
@@ -1642,6 +1688,13 @@ bool Bot::fight_enemies(bool kills_only) {
             if (!ab.can_target_enemies() && !ab.can_target_ground()) continue;
             const auto tiles = ab.valid_tiles();
             for (const auto* f : order) spell_first = spell_first || tiles.is_set(f->pos);
+        }
+    if (Cfg::SPELL_KILL_FIRST && hit && me.can_cast() && kind != bc::champion_type::marcella)
+        for (const auto& ab : me.abilities()) {
+            if (ab.is_attack_reset() || !ab.is_ready() || !(ab.is_damage() || ab.is_aoe_damage())) continue;
+            if (!ab.can_target_enemies() && !ab.can_target_ground()) continue;
+            const auto tiles = ab.valid_tiles();
+            for (const auto* f : order) spell_first = spell_first || (tiles.is_set(f->pos) && f->hp <= ab.damage_amount());
         }
     if (hit && me.can_cast() && !spell_first)
         for (const auto& ab : me.abilities()) {
@@ -1952,7 +2005,9 @@ int Bot::capturer(const Group& g) const {
     };
     auto score = [&](int type, int gems) {
         const bool vesper = type == static_cast<int>(bc::champion_type::vesper_vale);
-        return (vesper && g.gold >= Cfg::CAPTURE_GOLD_MIN ? 100000 : 0) + gems * 16 + (15 - type);
+        const bool marcella = Cfg::MARCELLA_OPENER && type == static_cast<int>(bc::champion_type::marcella);
+        return (vesper && g.gold >= Cfg::CAPTURE_GOLD_MIN ? 100000 : 0) + (marcella && g.gold == 0 && g.gems > 0 ? 200000 : 0)
+            + gems * 16 + (15 - type);
     };
     int best = static_cast<int>(kind);
     int best_s = score(best, static_cast<int>(bc::self().gem_count()));
@@ -2043,7 +2098,7 @@ void Bot::use_support_abilities() {
     if (!me.can_cast()) return;
     bool pressured = false;
     for (const auto& c : camps)
-        if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= 3) pressured = true;
+        if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= (Cfg::CAMP_GANK_GUARD ? spec_of(c).reach : 3)) pressured = true;
     for (const auto& f : foes)
         if (cheb(f.pos, pos) <= 3) pressured = true;
     for (const auto& ab : me.abilities()) {
@@ -2071,7 +2126,10 @@ bool Bot::retreat_if_hurt() {
     bool calm = foes.empty() && capture_group < 0;
     for (const auto& c : camps)
         if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= 5) calm = false;
-    if (Cfg::FIX_CAPTURE_CALM && calm)
+    bool calm_safe = Cfg::CALM_SAFE && me.health() >= 0.35f * me.max_health();
+    if (calm_safe)
+        for (const auto& g : ghosts) calm_safe = calm_safe && cheb(g.pos, pos) > 8;
+    if ((Cfg::FIX_CAPTURE_CALM || calm_safe) && calm)
         for (const auto& g : groups) {
             if (!g.reward) continue;
             for (auto t : g.tiles)
@@ -2121,7 +2179,7 @@ bool Bot::retreat_if_hurt() {
     // Tribute ignores damage, so a bag next to an altar is banked even now.
     if (me.gem_count() > 0)
         for (auto a : altar_tiles)
-            if (cheb(a, pos) <= bc::constants::submit_gems_range && !(bc::vision::has_altar_lock(a) && (!Cfg::FIX_LOCK_EARLY || bc::vision::altar_lock_at(a).is_enemy()))) {
+            if (cheb(a, pos) <= bc::constants::submit_gems_range && !(bc::vision::has_altar_lock(a) && (!(Cfg::FIX_LOCK_EARLY || Cfg::OWN_LOCK_OK) || bc::vision::altar_lock_at(a).is_enemy()))) {
                 try {
                     me.submit_gems(a);
                     return true;
@@ -2170,6 +2228,7 @@ bool Bot::should_bank() const {
     if (standing < 0) threshold = std::max(threshold, Cfg::BEHIND_BANK_BAG);
     if (Cfg::PVP_BANKING && round - last_foe_round <= Cfg::PVP_RECENT_ROUNDS) threshold = std::min(threshold, Cfg::PVP_BANK_BAG);
     if (Cfg::CARRY_RISK && round - last_foe_round <= Cfg::CR_ROUNDS) threshold = std::min(threshold, Cfg::CR_BAG);
+    if (Cfg::EARLY_BANK && round < 150) threshold = std::min(threshold, 20);
     if (bag >= threshold) return true;
     if (!(Cfg::DETOUR_BANKING && Cfg::DETOUR_REPLACES_NEAR) && altar_field.get(pos) <= Cfg::BANK_NEAR_DIST) return true;
     if (Cfg::DETOUR_BANKING && bag >= Cfg::DETOUR_MIN_BAG && round - detour_round <= Cfg::RETARGET_EVERY
@@ -2573,10 +2632,16 @@ void Bot::play_turn() {
         bool bounty = false;  // far behind: a loaded enemy is worth a risky fight
         if (standing < 0)
             for (const auto& f : foes) bounty = bounty || f.gems >= Cfg::BEHIND_BOUNTY;
+        bool isolated = false;
+        if (Cfg::ISO_LEASH) {
+            isolated = true;
+            for (const auto& m : mates) isolated = isolated && cheb(m.pos, pos) > 4;
+        }
         const bool losing = outmatched && !bounty
-            && (nearest <= Cfg::LOSING_RANGE || (nearest <= 6 && me.gem_count() >= static_cast<unsigned>(Cfg::THREAT_BANK_BAG)));
+            && (nearest <= Cfg::LOSING_RANGE || (nearest <= 6 && (isolated || me.gem_count() >= static_cast<unsigned>(Cfg::THREAT_BANK_BAG))));
         if (lethal || losing) {
             g_stage = "escape";
+            if (Cfg::ESCAPE_SUPPORT) use_support_abilities();  // shields and heals before running
             if (Cfg::ESCAPE_BANK_EMBARGO > 0 && me.gem_count() > 0)
                 bank_blocked_until = std::max(bank_blocked_until, round + Cfg::ESCAPE_BANK_EMBARGO);
             fight_enemies(ranged);  // melee strikes then walks; ranged only for a kill
@@ -2660,8 +2725,17 @@ void Bot::play_turn() {
     }
     bool fighting = false;
     for (const auto& c : camps)
-        if (!c.is_dead() && c.is_awake() && group_of(c.spawn_position()) == target && cheb(c.position(), pos) <= 3)
+        if (!c.is_dead() && c.is_awake() && group_of(c.spawn_position()) == target
+            && cheb(c.position(), pos) <= (Cfg::CAMP_GANK_GUARD ? spec_of(c).reach : 3))
             fighting = true;
+    if (Cfg::CAMP_GANK_GUARD && fighting) {  // an enemy arrived mid camp fight: the camp would fight for them
+        bool ganked = false;
+        for (const auto& f : foes) ganked = ganked || (f.weight >= 1.f && cheb(f.pos, pos) <= 4);
+        if (ganked) {
+            g_stage = "gank_guard";
+            if (escape()) return;
+        }
+    }
 
     g_stage = "bank";
     const bool wins_now = bc::global_submitted_gems(team::ally) + me.gem_count() >= bc::constants::winning_gems;
@@ -2671,7 +2745,8 @@ void Bot::play_turn() {
     // A bag that cannot be banked is no reason to skip shopping (spent gold still
     // counts in the gold tiebreak).
     const bool bag_stuck = Cfg::BLOCKED_ALTAR_FARM && round < bank_blocked_until;
-    if (!fighting && (me.gem_count() == 0 || bag_stuck) && wants_shop()) {
+    const bool small_bag = Cfg::SMALL_BAG_SHOP && me.gem_count() < 20 && spawn_field.get(pos) <= 10;
+    if (!fighting && (me.gem_count() == 0 || bag_stuck || small_bag) && wants_shop()) {
         if (spawn_field.get(pos) <= 10) {
             if (move_to(ally_spawn)) return;
         } else if (me.gold_count() >= static_cast<unsigned>(Cfg::RECALL_SHOP_GOLD) && enemies.empty()) {

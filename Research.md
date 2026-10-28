@@ -278,6 +278,32 @@ NEETCoders, prism best girl, Claudus Maximus, hello, Ad Astra, Supaswag (2,196).
   Failed comebacks die (13.4 vs 4.9) and stop farming away (10.0 vs 20.8). Across all games, wins are decided by deaths:
   5.6 vs 12.1 in wins, 12.2 vs 5.4 in losses.
 
+### v65 on the ranked ladder (ladder v44, 412 games 27 Oct 09:50 - 28 Oct 01:45 UTC, v67 window excluded)
+
+213-199 (52%). Losses are fights, not farming: deaths 23.2 vs 4.8 in losses (9.9 vs 10.6 in wins), gems collected by
+r300 level (215 vs 219), gold@300 928 vs 1,104 (kill gold), gems lost 192 vs 62. Loss types: fight deficit 76,
+economy + fight 96, economy only 10, close 17. 93% of loss deaths are to champions, 52% on our own half; first
+death median r111. Counting a Cassi & Issac death once, 57% of loss deaths are isolated pick-offs (no ally death
+within 12 rounds / 10 tiles); Cassi & Issac are 37% of those. Replays (23 losses, 512 deaths): 89% HP 12 rounds
+before death, 65% 6 rounds before; 2 rounds before, 42% have no ally within 6. Killers: Vesper 21%, Marcella 20%,
+Vendetta 16%, Heart 15%. Worst maps: adgato_gemcombat1-5 about 6/41 (300-500 gold behind at r300, 15-27 deaths),
+elkring 1/10, gold_rush 1/6. 3-pick maps 45% (4-pick 59%, 5-pick 50%). Worst opponents: Electric Tributers 1/9,
+Memory? 2/10, Alpha pekka 4/15, Gilded Gold Clusters 4/15.
+
+Deep-dive (2026-10-28, 23 loss replays, 512 deaths, sampled every 2 rounds): at t-8/-6/-4/-2 the victim has 76/66/48/20%
+HP with the nearest enemy 4/3/3/2 tiles away; over t-6..t-2: chased with the enemy closing 32%, fleeing and caught 26%,
+in a camp fight 26%, on a capture tile 8%, trading 7%. Own-half deaths (52%): nearest ally at t-6 median 4 tiles (52%
+within 4, 31% beyond 8), that ally mostly walking (59%), at 85% HP and with its own enemy within 6 in 56% of cases; the
+victim faces 2+ enemies in 59%. Early time split r0-300 (same classifier on 60 top-10, 11 v65-win, 23 v65-loss replays):
+camp fight 26.9 / 27.1 / 21.2%, walking 33 / 41 / 35%, at spawn 8.0 / 2.5 / 3.3%, capture 10.1 / 8.6 / 6.7%, waiting
+near a camp 4.1 / 6.2 / 4.5%, dead 6.5 / 3.9 / 15.6%. "Within 2 tiles of a live camp" (Observations.md) is 24 / 17 / 13%,
+but our ranged champions hit from 3 tiles, so that metric understates our camp time; the real gap is ~8 points more
+walking and ~5 points less time at spawn. adgato maps are all gem clusters (0 gold): gold there is kill gold (100) and
+Marcella's tribute gold (top-10 gold@300 386 with Marcella, 191 without); v65 194 vs opponents 631 because we die 6.6
+times before r300 to their 2.0. elkring: 10 identical elk groups, our clear tempo matches the top 10 (8.8 vs 9.9 before
+r200, first clear r12 vs r11), losses are fights (deaths 28.8 vs 5.1). gold_rush: top 10 farm the gold-only clusters
+first (243 of 325 clears before r200), v65 farms the wolf groups (44 of 72).
+
 ### v57br on the ranked ladder (ladder v41, first 135 games 27 Oct 02:50-07:10 UTC)
 
 73/135 (54%; v39 49% over 455, v37 45% over 95) against opponents averaging ~1,690; rating 1,626 -> 1,693 (rank 265 ->
@@ -458,6 +484,14 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 | `MOVE_SCORER` (food-postmortem style 9-tile scoring in skirmishes: threat/HP, hit and kill bonus, ally support, home pull, numbers-scaled threat; dev bots/v44), focus set 8 pick-off maps x zmarc/zgank, 32 games vs v40pr (21) | v1 10 (+1 -12; zmarc 1/16, deaths 23 vs 9); + only-when-threatened and lethal-tile guards 15 (+5 -11); threat weight 20: 15 (+2 -8). A generic scorer loses to the tuned rule chain (FIT_FIGHT, CONVERGE, DUEL_STAND, retreat) |
 
 ---
+
+| v70 review fixes on v65 (external bug review; dev bots/v70, all switches off == v65 verified), focused 144 games on 24 maps x zmarc/zgank/zmeta (locks: x zlock2/zcamp/zmarc; chase: 14 fight maps x zmarc/zgank/zci; draft: 12 three-pick maps), then full pool 1,680 | `FIX_CAPTURE_CALM` (no 50% heal floor next to an uncaptured group) focused +10 -10, full +73 -94; `FIX_CAST_FIRST` (ranged cast range-4 spells before stepping in) +15 -11, full +106 -125; `FIX_SPELL_FIRST` (damage/stun spell before attack reset) +5 -4, full +24 -35; `FIX_TAVI_HP` (no field Health shards) +8 -8, full +49 -78 (clearly worse); `FIX_DRAFT_CI` (scored third pick on 3-pick maps) +2 -11 (fail); `FIX_LOCK_THREAT` +1 -2; `FIX_LOCK_EARLY` (lock before the tribute starts, own locks no longer block our tributes) +1 -2; `FIX_CHASE_BURST` (chase counts one attack) +3 -5; `FIX_MOVE_REVEAL` +10 -10. None gains; all four full-pool runs net negative. Nothing packaged |
+
+| v71 review part 3 on v65 (dev bots/v70 switches, off == v65 verified): focused (fight switches 14 fight maps x zmarc/zgank/zci 84; economy 24 maps x zmarc/zgank/zmeta 144; locks x zlock2/zcamp/zmarc), full pool 1,680 for the passes | Focused: `GOLD_EARLY` (gold weight 0.25 before r300 / gold-only groups) +19 -8, `EARLY_BANK` (bank at 20 before r150) +8 -5, `SMALL_BAG_SHOP` (shop trip with a bag < 20) +9 -8, `SPELL_KILL_FIRST` +3 -0, `OWN_LOCK_OK` +1 -0 (pass); `CALM_SAFE` +7 -10, `ISO_LEASH` (outmatched and no ally within 4: disengage at 6) +5 -7, `NEAR_ALLY_FIT` (FIT_FIGHT allies within 4) +3 -5, `CONVERGE_WIDE` +10 -13, `EARLY_TEMPO` (small groups x1.6 before r250) +7 -10 (fail). Full pool: GOLD_EARLY +102 -127, EARLY_BANK +51 -74 (clearly worse), SMALL_BAG_SHOP +46 -66, SPELL_KILL_FIRST +8 -9, OWN_LOCK_OK +4 -3; all five combined (v71all) +100 -143, SPRT reject. Focused wins do not carry to the full pool; v65 stays |
+
+| New adversary `bots/zhunt` (v65 engine + top-10 draft Vesper/Marcella/Vendetta/Heart/Ryth/Tavi, HELP_CALLS and RAID on, `hunt()`: from r60 a healthy champion walks in on a visible enemy with no other enemy within 5 when our side is 1.2x stronger there) vs v65 on 20 maps: v65 29/40 (pool average 88%); in v65's losses deaths 18.5 vs 7.1 (ladder losses 23.2 vs 4.8). Switches from bots/v70 vs v65 on all 70 maps x zhunt (140 paired) | ISO_LEASH +11 -7, FIX_CHASE_BURST +9 -6, FIX_MOVE_REVEAL +10 -7, NEAR_ALLY_FIT +6 -7, SPELL_KILL_FIRST +0 -2, CONVERGE_WIDE +12 -18, CALM_SAFE +9 -20, FIX_CAPTURE_CALM +12 -21. Full pool: ISO_LEASH +57 -63, FIX_CHASE_BURST +35 -37, FIX_MOVE_REVEAL +67 -87; all three combined zhunt +16 -12, full +87 -114; ISO_LEASH + FIX_CHASE_BURST zhunt +15 -15, full +65 -80. No gain anywhere: v65 stays |
+
+| Review part 4 on v65 (bots/v70 switches, off == v65 verified), focused vs zmarc/zgank/zhunt on target maps, then full pool + zhunt; breakdown over all cached paired games (bruiser = zstack/zgank/zmarc/zhunt, race = 00rows/00galaxy/00split) | `SELECTIVE_GOLD` (0.28 for gold-only groups before r400; 0.20 before r300 on non-race maps with >= 4.5 gold per gem) 51 maps +28 -42 (fail). `ESCAPE_SUPPORT` (shields/heals before escaping, walk-compatible stun on the chaser) 14 fight maps +8 -13 (fail). `CAMP_GANK_GUARD` (awake camps in burst_at / FIT_FIGHT, camp reach instead of 3, escape when an enemy is within 4 in a camp fight) +12 -11, full +105 -116, zhunt +14 -23; bruiser +62 -69, race +2 -7, adgato +16 -8. `MARCELLA_OPENER` (Marcella over Willow, captures gem-only groups) +15 -15, full SPRT reject +61 -108, zhunt +12 -25; bruiser +47 -67, race +2 -17. Nothing ships |
 
 ## 7. Performance and fuel
 

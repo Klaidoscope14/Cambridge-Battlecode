@@ -78,6 +78,15 @@ void play_draft() {
         bc::draft::pick(CD::vesper_vale);
         return;
     }
+    // zhunt: the top-10 core, in their pick-rate order.
+    for (auto p : {CD::vesper_vale, CD::marcella, CD::vendetta, CD::heart_of_ruin, CD::ryth, CD::tavi}) {
+        if (std::find(ours.begin(), ours.end(), p) != ours.end()) continue;
+        try {
+            bc::draft::pick(p);
+            return;
+        } catch (...) {
+        }
+    }
     int opening = 3;  // DRAFT3: fewer forced openers on 3-champion maps
     if constexpr (Cfg::DRAFT3 < 3) {
         try {
@@ -85,7 +94,6 @@ void play_draft() {
         } catch (...) {
         }
     }
-    if (Cfg::FIX_DRAFT_CI && opening < 3 && std::find(ours.begin(), ours.end(), CD::cassi_and_issac) != ours.end()) --opening;
     if (Cfg::CI_DRAFT && std::find(ours.begin(), ours.end(), CD::cassi_and_issac) == ours.end()) {
         try {
             bc::draft::pick(CD::cassi_and_issac);  // throws if the enemy already has it

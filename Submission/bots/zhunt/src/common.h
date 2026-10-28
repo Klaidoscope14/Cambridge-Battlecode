@@ -101,35 +101,17 @@ inline constexpr float PAIR_TOGETHER_BONUS = 1.0f;   // score bonus for the grou
 inline constexpr float PAIR_DRAFT_SCORE = 7.0f;      // draft value of the pick (9.6 -> 7.0: v23 review, 55/70 vs a Stellar/Ren/Varg/Ryth bot, was 43)
 // CI_DRAFT (v39+v41 ladder, 99 Cassi & Issac games, 42% vs 52%: deaths even 12.6 / 10.8, but they clear 58 camps to our
 // 39 - one pick, two farming bodies; 5/18 on 3-champion maps): take Cassi & Issac with our first pick when available.
-inline constexpr bool CI_DRAFT = true;
+inline constexpr bool CI_DRAFT = false;  // zhunt drafts the top-10 core instead
 // MONO_AVOID (194 monolith-map games, 45%: they clear 0.64 monoliths a game to our 0.02; 28% of our deaths are within 5
 // tiles of a monolith): an awake monolith that is not our target is danger within its reach + 1 in burst_at.
 inline constexpr bool MONO_AVOID = true;
-// v70 fixes (external review, 2026-10-28), each off == v65:
-// FIX_CAPTURE_CALM: a finished group waiting for capture within 5 tiles is not "calm" (no 50% heal floor), so a
-//   champion that ends a camp fight at 30-49% HP captures instead of walking home / recalling.
-// FIX_CAST_FIRST: a ranged champion with no camp in basic-attack range casts its spells (range 4) before stepping in;
-//   the step would block "excludes walking" spells for the turn.
-// FIX_SPELL_FIRST: before moving, a ready damage / stun spell with a target beats an attack reset (one cast per turn):
-//   Tavi's 2.2x focus stun, Ryth's area stun. Marcella keeps her reset (its enhanced attack stuns).
-// FIX_TAVI_HP: Tavi buys no Health shards off spawn (max health rises without healing and trips the retreat floor).
-// FIX_DRAFT_CI: Cassi & Issac counts as one of the forced openers (3-champion maps then keep one scored pick).
-inline constexpr bool FIX_CAPTURE_CALM = false;
-inline constexpr bool FIX_CAST_FIRST = false;
-inline constexpr bool FIX_SPELL_FIRST = false;
-inline constexpr bool FIX_TAVI_HP = false;
-inline constexpr bool FIX_DRAFT_CI = false;
-// Review part 2: FIX_LOCK_THREAT: an enemy-locked altar is skipped like any threatened altar when a safe one exists
-//   (carriers walked into the campers to break the lock). FIX_CHASE_BURST: RANGED_CHASE (step from range + 1, then
-//   fire after an attack reset) counts one basic attack, not my_burst()'s two. FIX_MOVE_REVEAL: a move refused by a
-//   hidden occupant ends the move (no blind sidestep next to the ambusher). FIX_LOCK_EARLY: lock an altar within 2
-//   when a visible enemy carrying LE_GEMS+ is within LE_RANGE of it, before the tribute starts.
-inline constexpr bool FIX_LOCK_THREAT = true;
-inline constexpr bool FIX_CHASE_BURST = false;
-inline constexpr bool FIX_MOVE_REVEAL = false;
-inline constexpr bool FIX_LOCK_EARLY = false;
-inline constexpr int LE_GEMS = 15;
-inline constexpr int LE_RANGE = 4;
+// zhunt (ladder-style adversary, 2026-10-28): top-10 draft, hunts isolated enemy champions two-on-one.
+inline constexpr int HUNT_FROM = 60;          // no hunting before this round
+inline constexpr int HUNT_RANGE = 10;         // look this far for prey
+inline constexpr int HUNT_ALONE = 5;          // prey has no other visible enemy this close
+inline constexpr float HUNT_EDGE = 1.2f;      // our power at the prey over theirs
+inline constexpr float HUNT_MIN_HP = 0.6f;
+inline constexpr int HUNT_MAX_BAG = 40;
 // Review 2026-10-21: after the Monster + Jungle emblem plan every shard went into Strength/Focus
 // (172 Power Strength shards a game on the ladder): Vesper ended at ~690 Strength and 1385 HP. Buy
 // Power Health shards at this percentage of the Power Strength/Focus shards bought (0 = old build).
@@ -186,7 +168,7 @@ inline constexpr int MM_FIGHT_D = 35;
 inline constexpr int MM_RACE_D = 70;
 // RAID (resource control): while >= RAID_MIN_DEAD enemy champions are dead (alive state is readable out of vision),
 // contested and enemy-owned groups score x RAID_MULT.
-inline constexpr bool RAID = false;
+inline constexpr bool RAID = true;   // zhunt: farm their half while they are dead
 inline constexpr int RAID_MIN_DEAD = 2;
 inline constexpr float RAID_MULT = 2.0f;
 // TRACKING (unseen enemies): remember an unseen enemy for TR_ROUNDS with up to TR_SLACK tiles of movement, and drop it
@@ -449,7 +431,7 @@ inline constexpr bool TEST_FORCE_PRISM = false;  // A/B only: draft Prism first
 // Off: measured 2026-10-20 it pulled farmers into late, piecemeal fights - mirror
 // 6/18, ~16-20 rounds slower vs the starters, 33 -> 40 deaths vs the old bot.
 // Byte 7 stays free; the repacked capture byte alone matches the old layout.
-inline constexpr bool HELP_CALLS = false;
+inline constexpr bool HELP_CALLS = true;   // zhunt: teammates answer fights
 inline constexpr float HELP_MIN_RATIO = 0.6f;   // enemy power / ours that is worth calling for
 inline constexpr float HELP_MAX_RATIO = 2.5f;   // beyond this, backup arrives too late
 inline constexpr int HELP_RANGE = 22;           // answer calls this close (Chebyshev)

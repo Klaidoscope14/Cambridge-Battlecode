@@ -67,7 +67,8 @@ class Bot {
     bool ia_skip_treasure = false, ia_skip_camp_items = false;  // ITEM_ADAPT: decided once from map geometry
     bool cluster_rich = false, wall_map = false;  // PROSPECTOR_MAPS / TP_SHORTCUT
     int last_ward_round = -1000;
-    int map_mode = 0;       // MAP_MODES: 1 fight, -1 race, 0 normal
+    int map_mode = 0;
+    float map_gold_per_gem = 0.f;  // SELECTIVE_GOLD       // MAP_MODES: 1 fight, -1 race, 0 normal
     int enemies_dead = 0;   // RAID: enemy champions dead right now
     bool owners_ready = false;
     void set_owners();

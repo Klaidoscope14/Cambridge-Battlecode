@@ -179,6 +179,7 @@ class Bot {
     bool escape();
     bool flight_futile() const;
     bool converge();
+    bool hunt();
 
     void assess_threat();
     void ensure_danger();

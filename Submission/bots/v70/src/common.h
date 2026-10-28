@@ -130,6 +130,27 @@ inline constexpr bool FIX_MOVE_REVEAL = false;
 inline constexpr bool FIX_LOCK_EARLY = false;
 inline constexpr int LE_GEMS = 15;
 inline constexpr int LE_RANGE = 4;
+// Review part 3 (2026-10-28), each off == v65:
+inline constexpr bool OWN_LOCK_OK = false;      // escape / retreat tribute at an altar our own team locked (rules allow it)
+inline constexpr bool SPELL_KILL_FIRST = false; // a damage spell before the attack reset only when the spell kills
+inline constexpr bool CALM_SAFE = false;        // FIX_CAPTURE_CALM only with no ghost within 8 and HP >= 35%
+inline constexpr bool ISO_LEASH = false;        // outmatched with no ally within 4: disengage at 6 tiles (not LOSING_RANGE)
+inline constexpr bool NEAR_ALLY_FIT = false;    // FIT_FIGHT counts allies within 4 tiles (not SKIRMISH_RANGE 7)
+inline constexpr bool CONVERGE_WIDE = false;    // converge when a mate is within 5 of the enemy; bag limit 45 on our half
+inline constexpr bool SMALL_BAG_SHOP = false;   // walk home to shop with a bag under 20 (spawn within 10)
+inline constexpr bool EARLY_BANK = false;       // bank at 20 gems before round 150
+inline constexpr bool EARLY_TEMPO = false;      // before round 250, groups with <= 2,700 HP score x 1.6 (clusters, wolves)
+inline constexpr bool GOLD_EARLY = false;
+// Review part 4 (2026-10-28), each off == v65:
+// SELECTIVE_GOLD: gold-only groups weigh gold 0.28 before r400; mixed groups 0.20 before r300 only on non-race maps with
+//   >= 4.5 gold per gem. CAMP_GANK_GUARD: awake camps that will hit us count in burst_at and in FIT_FIGHT's enemy damage,
+//   camp reach replaces the hard-coded 3, and an enemy within 4 during a camp fight triggers escape(). ESCAPE_SUPPORT:
+//   shields/heals run before a lethal/losing escape, and escape() first casts a walk-compatible stun on the nearest chaser.
+//   MARCELLA_OPENER: third forced opener Marcella (MELEE_OPENER 2), who captures gem-only groups (2 gold per tributed gem).
+inline constexpr bool SELECTIVE_GOLD = false;
+inline constexpr bool CAMP_GANK_GUARD = false;
+inline constexpr bool ESCAPE_SUPPORT = false;
+inline constexpr bool MARCELLA_OPENER = false;       // GOLD_WEIGHT 0.25 before round 300 and for gold-only groups
 // Review 2026-10-21: after the Monster + Jungle emblem plan every shard went into Strength/Focus
 // (172 Power Strength shards a game on the ladder): Vesper ended at ~690 Strength and 1385 HP. Buy
 // Power Health shards at this percentage of the Power Strength/Focus shards bought (0 = old build).

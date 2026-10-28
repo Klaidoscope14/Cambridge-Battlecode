@@ -540,10 +540,6 @@ void Bot::shop() {
     for (int i = 0; i < 12; ++i) {
         const auto item = next_item();
         if (!item || me.gold_count() < item->cost() || !me.can_buy(*item)) break;
-        if (Cfg::FIX_TAVI_HP && kind == bc::champion_type::tavi && !ally_spawn.is_set(pos)
-            && (*item == bc::item_type::bruiser_shard_of_health || *item == bc::item_type::power_shard_of_health
-                || *item == bc::item_type::jungle_shard_of_health))
-            break;
         me.buy(*item);
     }
 }
@@ -1375,6 +1371,33 @@ bool Bot::flight_futile() const {
     return false;
 }
 
+// zhunt: walk in on a visible enemy champion that stands alone (no other enemy within HUNT_ALONE) when our side is
+// clearly stronger there, the way ladder teams pick off lone farmers.
+bool Bot::hunt() {
+    auto& me = bc::self();
+    if (round < Cfg::HUNT_FROM || my_hp < Cfg::HUNT_MIN_HP * my_max || me.gem_count() >= static_cast<unsigned>(Cfg::HUNT_MAX_BAG)) return false;
+    const Foe* best = nullptr;
+    float best_s = 0.f;
+    for (const auto& f : foes) {
+        if (f.weight < 1.f || enemy_spawn.is_set(f.pos)) continue;
+        const int d = cheb(f.pos, pos);
+        if (d > Cfg::HUNT_RANGE) continue;
+        bool alone = true;
+        for (const auto& o : foes)
+            if (&o != &f && o.weight >= 1.f && cheb(o.pos, f.pos) <= Cfg::HUNT_ALONE) alone = false;
+        if (!alone || side_power(f.pos, false) < Cfg::HUNT_EDGE * side_power(f.pos, true)) continue;
+        const float s = 2.f - f.hp / std::max(f.max_hp, 1.f) + static_cast<float>(f.gems) / 50.f + 1.f / static_cast<float>(1 + d);
+        if (s > best_s) best_s = s, best = &f;
+    }
+    if (!best) return false;
+    g_stage = "hunt";
+    const vec2 at = best->pos;
+    fight_enemies();
+    if (me.can_move()) move_to(square(at, static_cast<int>(me.attack_range())) & ~terrain);
+    if (!acted_attack) fight_enemies();
+    return true;
+}
+
 bool Bot::converge() {
     auto& me = bc::self();
     if (my_hp < 0.5f * my_max || me.gem_count() >= 30 || foes.empty()) return false;
@@ -1632,17 +1655,8 @@ bool Bot::fight_enemies(bool kills_only) {
                 break;
             }
     }
-    // Attack reset on the same target if it is still standing (FIX_SPELL_FIRST: unless a ready damage / stun spell
-    // has a target and we have not moved, so the spell is castable).
-    bool spell_first = false;
-    if (Cfg::FIX_SPELL_FIRST && hit && me.can_cast() && me.can_move() && kind != bc::champion_type::marcella)
-        for (const auto& ab : me.abilities()) {
-            if (ab.is_attack_reset() || !ab.is_ready() || !(ab.is_damage() || ab.is_aoe_damage() || ab.is_cc())) continue;
-            if (!ab.can_target_enemies() && !ab.can_target_ground()) continue;
-            const auto tiles = ab.valid_tiles();
-            for (const auto* f : order) spell_first = spell_first || tiles.is_set(f->pos);
-        }
-    if (hit && me.can_cast() && !spell_first)
+    // Attack reset on the same target if it is still standing.
+    if (hit && me.can_cast())
         for (const auto& ab : me.abilities()) {
             if (!ab.is_attack_reset() || !ab.is_ready()) continue;
             try {
@@ -1999,26 +2013,8 @@ bool Bot::attack_camp(int gid) {
             return false;
         }
         acted_attack = true;
-        // Attack reset: refresh and swing again at whatever is still in range (FIX_SPELL_FIRST: unless a ready
-        // damage / stun spell can hit this group and we have not moved; cast_on_camps below then uses the cast).
-        bool spell_first = false;
-        if (Cfg::FIX_SPELL_FIRST && me.can_cast() && me.can_move() && kind != bc::champion_type::marcella) {
-            camps = safe_camps();
-            for (const auto& ab : me.abilities()) {
-                if (ab.is_attack_reset() || !ab.is_ready() || !(ab.is_damage() || ab.is_aoe_damage() || ab.is_cc())) continue;
-                if (!ab.can_target_camps() && !ab.can_target_ground()) continue;
-                const auto tiles = ab.valid_tiles();
-                for (const auto& c : camps)
-                    try {
-                        if (!c.is_dead() && tiles.is_set(c.position()) && (group_of(c.spawn_position()) == gid || c.is_awake())
-                            && (!ab.is_cc() || ab.is_damage() || spec_of(c).strength > 0.f))
-                            spell_first = true;
-                    } catch (...) {
-                    }
-            }
-        }
+        // Attack reset: refresh and swing again at whatever is still in range.
         for (const auto& ab : me.abilities()) {
-            if (spell_first) break;
             if (!ab.is_attack_reset() || !ab.is_ready() || !me.can_cast()) continue;
             camps = safe_camps();
             if (const auto* again = best_in_range()) {
@@ -2068,13 +2064,6 @@ bool Bot::retreat_if_hurt() {
     bool calm = foes.empty() && capture_group < 0;
     for (const auto& c : camps)
         if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= 5) calm = false;
-    if (Cfg::FIX_CAPTURE_CALM && calm)
-        for (const auto& g : groups) {
-            if (!g.reward) continue;
-            for (auto t : g.tiles)
-                if (cheb(t, pos) <= 5) { calm = false; break; }
-            if (!calm) break;
-        }
     const float base_floor = paired ? std::max(Cfg::RETREAT_HP, Cfg::PAIR_RETREAT_HP) : Cfg::RETREAT_HP;
     const float floor_hp = calm ? std::max(Cfg::CALM_HEAL_HP, base_floor) : base_floor;
     float frac = me.health() / std::max(me.max_health(), 1.f);
@@ -2401,10 +2390,6 @@ bool Bot::farm() {
         wait_turns = 0;
         g_stage = "farm:fight:first";
         if (attack_camp(gid) && (ranged || !me.can_move())) return true;
-        if (Cfg::FIX_CAST_FIRST && ranged && me.can_cast() && me.can_move()) {
-            cast_on_camps(gid);  // range-4 spells first: a step now would block them this turn
-            if (!me.can_cast()) return true;
-        }
         g_stage = "farm:fight:goals";
         bitboard goals;
         for (const auto& c : camps)
@@ -2675,6 +2660,7 @@ void Bot::play_turn() {
             return;
         }
     }
+    if (!fighting && capture_group < 0 && hunt()) return;
     if constexpr (Cfg::CONVERGE)
         if (!fighting && capture_group < 0 && converge()) return;
     if (capture_group < 0 && deny()) return;
