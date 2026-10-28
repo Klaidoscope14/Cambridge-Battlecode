@@ -96,8 +96,8 @@ inline constexpr int SW_SKIP = 40;
 inline constexpr float SW_PENALTY = 10.f;
 
 // ---- fight switches under test (2026-10-28) ----
-inline constexpr bool JOIN_AT = false;        // judge an ally's fight around the ally, not around me
-inline constexpr bool EARLY_OUT = false;      // leave when two rounds of the burst on me would kill, or below
+inline constexpr bool JOIN_AT = true;         // judge an ally's fight around the ally, not around me
+inline constexpr bool EARLY_OUT = true;       // leave when two rounds of the burst on me would kill, or below
 inline constexpr float EO_HP = 0.60f;         // EO_HP in a fight that is not clearly ours (top teams step away ~77%)
 
 // ---- vision ----
