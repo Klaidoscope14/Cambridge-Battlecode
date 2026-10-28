@@ -1,5 +1,9 @@
 # How to submit (CAMBC 2026)
 
+> **Current state and the testing protocol are in `../CLAUDE.md`.** Version names below are partly historical: the live
+> bot is `bots/kessoku` = `bots/v65` (ladder v44), cambc 4.0.0 / engine 2.0.0, 70-map pool. The user uploads; never run
+> `cambc submit`.
+
 `Submission/` is a `cambc` workspace (cambc / SDK 3.0.5, engine 1.0.3 = the ladder's; `pip install --upgrade cambc`, then `cambc init --yes .` refreshes the SDK and maps). The bot is **`bots/kessoku`**, written in C++; its source is the current submission (v47h25 = v46gc + HP_RATIO_GUARD (K 2.5), also frozen as `bots/v47h25`; `bots/v47` is the same source with the guard off (= v46gc, ladder v36); `bots/v46gc` (ladder v36), `bots/v45sq` (ladder v35), `bots/v40pr` (ladder v34), `bots/v36all`, `bots/v35`, `bots/v31` and `bots/v28` are rollbacks). Adversary `bots/zmarc` reproduces the ladder's Marcella-invader losses.
 Ladder team: **HighCortisol** (team id `58271d23-d86a-48de-987a-5d82c983d7db`).
 

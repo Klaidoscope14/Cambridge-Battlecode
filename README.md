@@ -1,5 +1,7 @@
 # kessoku — CAMBC '26 Autumn bot (team HighCortisol)
 
+**Agents: read `CLAUDE.md` first** (state, rules, exact testing protocol, commands).
+
 A C++ bot for the Cambridge Battlecode 2026 champions game (`cambc` 4.0.0, engine 2.0.0): five-champion drafts,
 camp farming for gems and gold, altar tributes, and fights between champions. First team to tribute 1,000 gems wins.
 
@@ -9,8 +11,8 @@ camp farming for gems and gold, altar tributes, and fights between champions. Fi
 |---|---|
 | `kessoku.zip` | The upload bundle for the platform (built from `Submission/bots/kessoku`). |
 | `Submission/` | The `cambc` workspace: bots, maps, SDK (C++ only), test tools. |
-| `Submission/bots/kessoku` | The current bot source (same as `bots/v57br`, ladder v41). |
-| `Submission/bots/v47h25`, `v54po` | Rollback sources (ladder v37 and v39). |
+| `Submission/bots/kessoku` | The current bot source (same as `bots/v65`, ladder v44, live). |
+| `Submission/bots/v47h25` … `v61`, `v67` | Rollback / rejected versions. `bots/v70` holds tested-and-rejected fixes behind off switches. `bots/nova` is a from-scratch experiment. |
 | `Submission/bots/z*` | Local test opponents (e.g. `zmarc` Marcella invaders, `zgank` dive, `zci` Cassi & Issac, `zstl` Stellar, `zmono2` monoliths). |
 | `Submission/tools/` | Test and analysis tools (see below). |
 | `Submission/tools/data/` | Map pool, spawn tiles and map geometry (`geo.json`) for all 70 maps; the two real-opponent panels. |
@@ -69,5 +71,9 @@ Tools (from `Submission/`):
 | v38 | v52pa | + ranged pairing anywhere; panels 8/20, 6/20 |
 | v39 | v54po | + HP-exchange guard, Jungle/Power opener; 48% over 427 games |
 | v41 | v57br | + wards, Prospector, teleports, close-out, Bruiser stacking; full pool 1,383 vs 1,327 vs v39; panels 7/20, 9/20 |
+| v42 | v59ns | + NEAR_SWEEP; panels 6/20, 9/20 |
+| v43 | v61 | + MAP_MODES, TRACKING; panels 12/20, 6/20 |
+| v44 | v65 | + CI_DRAFT, MONO_AVOID; panels 11/20, 11/20 (best); 52% over 412 ranked games — **live** |
+| v45 | v67 | + THREAT_BANK8, RACE_SOLO, FIGHT_SIM_OUTMATCHED; panel B rejected, rolled back to v44 |
 
 Details for each version are in `Research.md`.
