@@ -253,6 +253,31 @@ Ordered by current priority.
 
 ---
 
+### Top-10 teams, engine 2.0 (2,469 ranked games, 250 per team, 27 Oct 02:40-10:50 UTC)
+
+Teams: Intercontinental Fish (2,433, 69% in this sample), Mite (61%), Trzy Kwaterki, German Empire Destroyer Destroyers,
+NEETCoders, prism best girl, Claudus Maximus, hello, Ad Astra, Supaswag (2,196). Data and scripts: ~/.cache/kessoku_top.
+- **Draft:** a melee-bruiser core in almost every game: Marcella 84%, Vesper 82%, Vendetta 80%, Heart of Ruin 79%,
+  Ryth 42%; Tavi 20%, Prism 18%, Cassi & Issac 11% (Fish 82%), Willow 11%, Varg 9%. First pick Vesper 36%, Marcella 21%,
+  Heart 20%, Prism 18%. 3-champion maps: Heart/Vendetta/Vesper (118), Heart/Marcella/Vesper (95). We field Tavi, Willow
+  and Varg, which they almost never pick, and never Heart or Marcella.
+- **Who earns:** two melee/Vesper carries. Top earner per game: Marcella 375 of 900, Vesper 253, Vendetta 171. Average
+  gold per game: Marcella 2,101, Vesper 1,901, Vendetta 1,200, Heart 872. Our Vesper earns 3,114 but Willow 469, Tavi
+  765: one carry and weak farmers.
+- **Economy:** gold@300 1,023-1,465 (Fish 1,465 with gold@100 434 vs ~300 elsewhere: Cassi & Issac's extra body); first
+  shard r48-70; 14-25 tributes a game at 30-53 gems (Fish 23.6 x 37, Mite 24.5 x 33); 42-59 clears, ~2/3 on their own
+  half, clusters the largest share (17-33 a game); 77-231 wards; teleports 0-5.3 and altar locks 0-8.3 a game.
+- **Items:** Bruiser stacking everywhere (by far the most shards), small Treasure/Jungle/Durability/Monster openers,
+  Home on some; new families (Prospector, Capture, Hunter, Skirmish, Greed, Collectors) almost unused.
+- **Map types:** fight maps 1,178 games, 20 tributes x 36, 126 wards; normal 906, 17 x 44; race 385, 26 x 33, fewer
+  deaths (5.5). Their gold@300 on our worst maps is 1.5-4x ours: the_pack 1,715 vs our 382, gold_rush 1,235 vs 496,
+  treasure_box 2,076 vs 726, lanes 1,629 vs 971.
+- **Closing gaps:** behind by 150+ gold at r300 they still win 22% (ahead: 83%). The comebacks win fights (deaths 7.1 vs
+  10.8, kills on the leader), keep collecting gems (217 vs 207 at r300 despite less gold; 579 vs 497 at r600), bank more
+  often (25.9 vs 17.6 tributes), farm the enemy half more (16.8 vs 12.8 away clears) and take monoliths (0.33 vs 0.22).
+  Failed comebacks die (13.4 vs 4.9) and stop farming away (10.0 vs 20.8). Across all games, wins are decided by deaths:
+  5.6 vs 12.1 in wins, 12.2 vs 5.4 in losses.
+
 ### v57br on the ranked ladder (ladder v41, first 135 games 27 Oct 02:50-07:10 UTC)
 
 73/135 (54%; v39 49% over 455, v37 45% over 95) against opponents averaging ~1,690; rating 1,626 -> 1,693 (rank 265 ->
@@ -424,6 +449,8 @@ the fixed opponent set; SPRT = `tools/sprt.py` paired early-stopping test.
 | `TR_FIGHT_ONLY` (TRACKING only on fight-mode maps, to recover v43's panel-B race tempo), bots/v62tf vs v61 on the 37 non-fight maps x zmarc/zgank/zmeta | 169 vs 174 (+12 -17): fail, TRACKING helps there locally, so the panel-B drop is not explained by it. On top of v62tf (for information): `OWN_HALF` 27 maps 119 vs 125 (fail again); `PEEL` 14 fight maps x zmarc/zgank/zci 51 vs 51 (level). Nothing packaged; v61 stays |
 | v63 = v61 + `OWN_HALF` + `PEEL` | focused 34 maps x zmarc/zgank/zmeta 167 vs 159 (+32 -24); full pool stopped by SPRT at 1,536 games: 1,255 vs 1,290 (+100 -135, beyond the -31 band) - zci 58 vs 66, zmono2 95 vs 103, zdive0 103 vs 110, zstack 95 vs 101. Fail; v61 stays |
 | Opponent gaps from v39+v41 ladder (99 Cassi & Issac games, 42% vs 52%: deaths even 12.6 / 10.8, but they clear 58 camps to our 39 and lead gold@300 1,026 vs 831 - one pick, two farming bodies; 5/18 on 3-champion maps. 194 monolith-map games, 45%: they clear 0.64 monoliths a game to our 0.02, 28% of our deaths within 5 tiles of a monolith). Both teams may draft the same champion. Focused vs v61: `CI_DRAFT` (first pick Cassi & Issac) vs zci full pool 89 vs 76, vs zmeta/zgank 17 maps 55 vs 53; `MONO_TEAM` (MONOLITH_WHEN_DOMINANT at 25% of the map's gems) 22 monolith maps 100 vs 113; `MONO_AVOID` (awake monolith not our target = danger within reach + 1) 113 vs 113 | **v65** = v61 + CI_DRAFT + MONO_AVOID, full pool **1,471 vs 1,398 (+184 -111)**, twice the noise band: zci 101 vs 76, zmarc 114 vs 104, zmono2 119 vs 110, zpoke 127 vs 118, zmeta 132 vs 125; clears 61.6 vs 55.4, wins 32 rounds sooner, deaths 7.5 vs 5.0 (Cassi & Issac count as two). MONO_TEAM fails -> **kessoku.zip = v65** |
+| `META_DRAFT` (top-10 core: open Vesper, Heart of Ruin, Vendetta, Marcella; 5th pick by score = Tavi), bots/v68md (Cassi & Issac draft off) and v68mdci (on), vs v65 | focused 17 always-lost maps x zmarc/zgank/zmeta/zci: 93 vs 104 / 100 vs 104; full pool stopped by SPRT at 768 games: 600 vs 674 (+38 -112) / 592 vs 674 (+32 -114). Clearly worse: our play logic is built for the ranged comp (30% retreat wastes Heart's missing-health passive, no Marcella tribute carrying, kiting/pairing rules) |
+| META_DRAFT + `HEART_LOWHP` (Heart fights down to 12% HP with an enemy within 6 when not outmatched) + `MARC_CAPTURE` (designated capturer by gain: Marcella 2 gold per tributed gem x group gems, Vesper 20% of group gold), bots/v69mel / v69melci vs v65 | roles now match the top teams (Marcella tributes 280 gems and earns 2,028 gold a game, Vesper 252 / 2,387, Vendetta 152 / 1,037, Heart 136 / 895), but focused 96 vs 104 / 95 vs 104 and full pool (SPRT stop at 768) 603 vs 674 / 580 vs 674: no better than the bare meta draft. Dropped; the ranged core + Cassi & Issac (v65) stays |
 | Economy and fights on v65, from v41+v43 ladder (175 games) by map mode: fight maps 48% (gems lost/death 8.4 vs 6.2), normal 58% (16.1 vs 11.5), race 61% (clears 37 vs 62); ~10% of our champion deaths traded; v43 ranked 55% over 40, clears 48 vs 53. Focused vs v65: `THREAT_BANK8` (non-race maps: bags of 10+ bank with an enemy within 8, was 4) 118 vs 115, gems lost 141 vs 172; `RACE_SOLO` (no PAIRING on race maps) 69 vs 66 (+3 -0); `FIGHT_SIM_OUTMATCHED` (existing fight sim: outmatched when we die or they keep more HP) 64 vs 63, gems lost 160 vs 270, deaths 13.0 vs 15.5; 0 faults | **v67** = v65 + all three, full pool 1,464 vs 1,471 (+119 -126, level): deaths 6.7 vs 7.5, gems lost 63 vs 72; zgank +9, zstack +12, zci -9, zpoke -6, zrush -6 -> **kessoku.zip = v67** |
 | Patch build orders on engine 2.0.0 (`ITEM_PLAN`, dev bots/v43; 420 games each vs v40pr on 70 maps x zgank/zmarc/zmeta): 1 Capture-Treasure-Jungle-Monster 299 vs 293 (+45 -39); 2 Treasure-Capture-Jungle-Monster 292; 3 Monster-Jungle (no Treasure) 293, gold@300 -31; 4 Monster-Treasure-Jungle 297; 5 + Tribute 4th 285 (+21 -29); 6 Capture-Treasure-Tribute-Jungle-Monster 290; 7 Capture-Monster-Jungle 288 | none beats Treasure-Jungle-Monster; Treasure still pays at 10%; Tribute hurts |
 | `BIG_GROUP_FULL_HP` (count unseen camps at full HP only for groups with >= 10 camps, strength >= 300 and an altar inside; on the 70-map pool that is only starfish's centre group; dev bots/v45, candidate bots/v45bg) | starfish side B: camp deaths 17.4 -> 5.1/game, all deaths 30.9 -> 15.8, but wins 12/13 -> 9/12 (two games lost the farming race); side A unchanged; other maps flat (zgank 88 vs 86, zmeta 126 vs 125 over 140 each). Not clearly better than v40pr locally: not handed over |
