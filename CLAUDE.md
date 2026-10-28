@@ -121,6 +121,33 @@ Environment notes:
 - Fuel: ~100k per turn; thrown engine errors cost ~2K; `vision::camps()` ~10K with 40+ camps; prints ~3K. Exhausted
   turns are suspended (`fuelExhausted` events in the stats JSON).
 
+## 6b. Running in a cloud session
+
+Nothing below carries over from the user's Mac automatically; check each before relying on it.
+
+1. **First check (run these before any analysis or test):**
+   ```bash
+   pip install cambc==4.0.0 && cambc --version     # must print 4.0.0
+   node --version && python3 --version             # replay reader needs Node; tools need Python 3
+   cambc matches list --team me --kind ranked --limit 1 --json   # works only when logged in
+   aws sts get-caller-identity                     # works only with AWS credentials
+   ```
+2. **cambc login.** Try `cambc login` in the session (it lasts 7 days). If it cannot complete without a browser, ask the
+   user to provide the session file from their Mac (`~/Library/Application Support/cambc/session-*.json`) as a secret
+   and write it where Linux cambc reads it (likely `~/.config/cambc/`; unverified — check `cambc login` behaviour).
+   Treat that file as a password. Without a login: local matches and tests still work; ladder, match downloads and
+   panels do not.
+3. **AWS.** Needs credentials as environment variables / secrets in the cloud environment (`AWS_ACCESS_KEY_ID`,
+   `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION=ap-south-1`), ideally a dedicated IAM user limited to EC2 in ap-south-1.
+   The runner SSHes with key pair `kessoku-runner`; its private key exists only on the user's Mac. Either the user
+   supplies it as a secret (write it to `~/.ssh/kessoku-runner.pem`, `chmod 600`), or the `kessoku-runner` key pair is
+   deleted in AWS so the runner recreates it. The runner opens the security group to the current public IP itself.
+4. **Network.** The environment must allow outbound access to the CAMBC platform API, the AWS endpoints and SSH (port
+   22) to EC2 instances. If SSH is blocked, AWS runs fail even with credentials: run tests locally with
+   `tools/sprt.py` instead (much slower).
+5. **Paths.** Analysis scripts use repo-relative paths; caches go to `~/.cache/...` and `$TMPDIR/kessoku_sprt`, which
+   start empty in a new session (baselines are replayed once, then cached).
+
 ## 7. Analysis tools and data in the repo
 
 | Path | What |
