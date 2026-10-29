@@ -32,7 +32,7 @@ lifetime gold, then kills.
 |---|---|
 | `kessoku` = `v65` | **Live (ladder v44).** v61 + CI_DRAFT (Cassi & Issac first) + MONO_AVOID. Full pool 1,471 vs v61's 1,398; panels 22/40 (best). 412 ranked games: 52%. |
 | `v70` | Switch lab on v65: ~24 review-proposed fixes, **all off == v65 (verified bit-identical)**. Every one was tested and rejected; see Research.md section 6 (rows "v70 review fixes", "v71 review part 3", "zhunt", "Review part 4"). |
-| `v71` | v65 with dead shop/draft code removed (Research.md section 6, "Dead-code cleanup"); verified bit-identical to v65 on the full pool + zhunt (1,820 games). Not uploaded. |
+| `v71` | v65 with dead shop/draft code removed (Research.md section 6, "Dead-code cleanup"); verified bit-identical to v65 on the full pool + zhunt (1,820 games). **Live as ladder v46 since 2026-10-29**; panels 11/20 and 11/20, all 40 games identical to v65. `kessoku.zip` = v71; v65 zip backed up as `kessoku_v65_backup.zip`. |
 | `v67` | v65 + THREAT_BANK8 + RACE_SOLO + FIGHT_SIM_OUTMATCHED — rejected on panel B (ladder v45, rolled back). |
 | `v61`, `v59ns`, `v59oh`, `v58pl`, `v57br`, `v54po`, `v47h25` | Older versions / rollbacks. |
 | `nova` | From-scratch bot (`NewStrategy.md`, `Observations.md`). Far weaker than v65 (0/12 head to head, nova vs v65 full pool 61 vs 338 wins). Accepted nova switches: ALIVE_STATE, DEAD_SHOP, MOVE_RESET, JOIN_AT, EARLY_OUT. |
