@@ -205,6 +205,10 @@ private:
     bool fight_enemies(bool kills_only = false);
     bool try_lock_altar();
     bool heart_guard();
+    bool ci_free_hits();
+    void ci_flag_distress();
+    bool ci_regroup();
+    bool ci_partner_anchor(vec2& at, bool& visible) const;
     bool break_channels();
     bool deny();
     bool hand_off_aggro();

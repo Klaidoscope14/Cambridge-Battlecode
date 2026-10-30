@@ -199,7 +199,18 @@ inline constexpr int HG_RANGE = 4;
 inline constexpr float HG_MIN_HP = 0.40f;
 inline constexpr bool HEART_ESCORT = false;  // PAIRING's lone-group penalty also applies to Heart while invaders are about
 inline constexpr bool HEART_CLUSTER = false; // Heart scores monster-free cluster groups x HC_MULT
-inline constexpr float HC_MULT = 2.0f;   // Heart takes the Jungle Focus + Bruiser Health line; false: the Strength line
+inline constexpr float HC_MULT = 2.0f;
+// Cassi & Issac survival (2026-10-30; v51 replays: in losses one bruiser runs down a lone, walking C&I half over ~8 rounds, and
+// the linked death costs both bodies). A partner joining costs no extra life: the halves die together anyway.
+inline constexpr bool CI_FREE_HITS = false;       // fleeing: Issac hits an adjacent chaser first; Cassi stuns the nearest chaser
+                                                  // (walk-compatible) unless she can kill; Issac dashes away below CI_DASH_HP
+inline constexpr float CI_DASH_HP = 0.70f;
+inline constexpr bool CI_REGROUP = false;         // a threatened half sets bit 7 of its claim byte and flees toward its partner;
+                                                  // a healthy partner that sees the bit comes and fights
+inline constexpr float CI_DISTRESS_HP = 0.65f;
+inline constexpr int CI_REGROUP_R = 14;
+inline constexpr bool CI_PARTNER_PAIRING = false; // invaders about: both halves farm within CI_PAIR_RANGE of the partner
+inline constexpr int CI_PAIR_RANGE = 7;   // Heart takes the Jungle Focus + Bruiser Health line; false: the Strength line
 inline constexpr int BI_MELEE_HEALTH_PCT = 100;
 inline constexpr bool DASH_STRIKE = true;   // aim dashes that have a landing effect at enemies/camps
 inline constexpr int DASH_STRIKE_CAMPS = 2;   // camps the landing must catch to be worth the cooldown

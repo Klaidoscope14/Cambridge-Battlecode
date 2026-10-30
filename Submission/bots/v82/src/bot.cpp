@@ -20,6 +20,7 @@ static int dg_seen[32] = {};
 static int dg_dx[32] = {}, dg_dy[32] = {};
 
 static bool gem_only = false;  // GEM_MAP_GUARD map feature (file scope: no Bot member)
+static bool ci_distress = false;  // CI_REGROUP: this half is in trouble (bit 7 of its claim byte)
 
 namespace {
 
@@ -213,7 +214,9 @@ bool Bot::invaders_recent() const {
 }
 
 void Bot::write_claim(int group) {
-    const std::uint8_t v = static_cast<std::uint8_t>(group + 1);
+    std::uint8_t v = static_cast<std::uint8_t>(group + 1);
+    if constexpr (Cfg::CI_REGROUP)
+        if (ci_distress) v |= 0x80;
     if (mem[Mem::CLAIMS + body] == v) return;
     mem[Mem::CLAIMS + body] = v;
     bc::shared_memory.write(static_cast<std::size_t>(Mem::CLAIMS + body),
@@ -635,7 +638,7 @@ void Bot::apply_lethal_hp() {
 int Bot::claims_on(int id) const {
     int n = 0;
     for (int b = 0; b < Mem::MAX_BODIES; ++b)
-        if (b != body && mem[Mem::CLAIMS + b] == id + 1) ++n;
+        if (b != body && (Cfg::CI_REGROUP ? (mem[Mem::CLAIMS + b] & 0x7F) : mem[Mem::CLAIMS + b]) == id + 1) ++n;
     return n;
 }
 
@@ -709,7 +712,21 @@ float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* 
     if (g.strength <= 0.f && claims > 0) value *= Cfg::CLAIMED_PENALTY;
     else if (crew > 0) value /= static_cast<float>(1 + crew);
     if (req > 0) value *= 1.f + Cfg::SQUAD_CLAIM_BONUS * std::min(claims, req);  // converge on one squad target
-    if (Cfg::PAIRING && (ranged || (Cfg::GEM_MAP_GUARD && gem_only) || (Cfg::HEART_ESCORT && kind == bc::champion_type::heart_of_ruin))
+    bool ci_paired_rule = false;
+    if constexpr (Cfg::CI_PARTNER_PAIRING)
+        if (paired && invaders_recent()) {  // the halves share one life: farm within reach of each other
+            ci_paired_rule = true;
+            const int pg = (mem[Mem::CLAIMS + partner_body] & 0x7F) - 1;
+            bool near = id == pg;
+            for (const auto& m : mates)
+                if (!near && m.type == partner_type)
+                    for (auto t : g.tiles)
+                        if (cheb(m.pos, t) <= Cfg::CI_PAIR_RANGE) { near = true; break; }
+            if (!near && pg >= 0 && pg < static_cast<int>(groups.size()))
+                near = cheb(groups[static_cast<std::size_t>(pg)].tiles.front(), g.tiles.front()) <= Cfg::CI_PAIR_RANGE;
+            if (!near) value *= Cfg::PAIR_ALONE_MULT;
+        }
+    if (!ci_paired_rule && Cfg::PAIRING && (ranged || (Cfg::GEM_MAP_GUARD && gem_only) || (Cfg::HEART_ESCORT && kind == bc::champion_type::heart_of_ruin))
         && invaders_recent()) {  // invaders about: ranged bodies farm next to an ally
         bool company = claims > 0;
         for (const auto& m : mates)
@@ -717,7 +734,7 @@ float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* 
                 if (!company && cheb(m.pos, t) <= Cfg::PAIR_RANGE) company = true;
         if (!company) value *= Cfg::PAIR_ALONE_MULT;
     }
-    if (paired && Cfg::PAIR_TOGETHER_BONUS > 1.f && mem[Mem::CLAIMS + partner_body] == id + 1)
+    if (paired && Cfg::PAIR_TOGETHER_BONUS > 1.f && (Cfg::CI_REGROUP ? (mem[Mem::CLAIMS + partner_body] & 0x7F) : mem[Mem::CLAIMS + partner_body]) == id + 1)
         value *= Cfg::PAIR_TOGETHER_BONUS;  // the two halves fight side by side
     for (const auto& f : foes)
         if (cheb(f.pos, g.tiles.front()) <= 5) {
@@ -1312,6 +1329,13 @@ bool Bot::escape() {
     if (Cfg::FLEE_TO_ALLY)
         for (const auto& m : mates)
             if (cheb(m.pos, pos) <= 10 && m.hp >= 0.4f * m.max_hp) refuge.push_back(m.pos);
+    if constexpr (Cfg::CI_REGROUP)
+        if (paired && ci_distress) {
+            vec2 at{};
+            bool visible = false;
+            if (ci_partner_anchor(at, visible) && cheb(at, pos) <= Cfg::CI_REGROUP_R && cheb(at, pos) < static_cast<int>(spawn_field.get(pos)))
+                refuge.push_back(at);
+        }
     auto home_of = [&](vec2 t) {
         if (refuge.empty()) return static_cast<int>(spawn_field.get(t));
         int d = 1 << 20;
@@ -1333,7 +1357,11 @@ bool Bot::escape() {
     pick_from(steps, best, best_b, best_home);
 
     // Dash when walking still leaves us in kill range.
-    if (best_b * Cfg::LETHAL_MARGIN >= my_hp && me.can_cast())
+    bool early_dash = false;
+    if constexpr (Cfg::CI_FREE_HITS)
+        if (kind == bc::champion_type::issac && my_hp < Cfg::CI_DASH_HP * my_max)
+            for (const auto& f : foes) early_dash = early_dash || (f.weight >= 1.f && !f.ranged && cheb(f.pos, pos) <= 2);
+    if ((early_dash || best_b * Cfg::LETHAL_MARGIN >= my_hp) && me.can_cast())
         for (const auto& ab : me.abilities()) {
             if (!ab.is_dash() || !ab.is_ready()) continue;
             vec2 jump = pos;
@@ -1768,6 +1796,100 @@ bool Bot::heart_guard() {
     return acted;
 }
 
+// Where the other half of Cassi & Issac is: its position when we see it, else its claimed group (shared memory).
+bool Bot::ci_partner_anchor(vec2& at, bool& visible) const {
+    for (const auto& m : mates)
+        if (m.type == partner_type) {
+            at = m.pos, visible = true;
+            return true;
+        }
+    visible = false;
+    const int pg = (mem[Mem::CLAIMS + partner_body] & 0x7F) - 1;
+    if (pg < 0 || pg >= static_cast<int>(groups.size())) return false;
+    at = groups[static_cast<std::size_t>(pg)].tiles.front();
+    return true;
+}
+
+// CI_FREE_HITS: actions that cost no movement while a C&I half flees. Issac swings at an adjacent chaser (the reset only
+// when the dash is not needed); Cassi takes a kill if she has one, else stuns the nearest chaser in range.
+bool Bot::ci_free_hits() {
+    auto& me = bc::self();
+    bool acted = false;
+    if (kind == bc::champion_type::issac) {
+        const Foe* adj = nullptr;
+        for (const auto& f : foes)
+            if (f.weight >= 1.f && cheb(f.pos, pos) <= 1 && (!adj || f.hp < adj->hp)) adj = &f;
+        if (!adj || !me.can_attack()) return false;
+        const auto& e = enemies[static_cast<std::size_t>(adj->index)];
+        try {
+            if (!e.is_alive() || !e.is_visible()) return false;
+            me.attack(e);
+            acted_attack = acted = true;
+        } catch (...) {
+            return false;
+        }
+        const bool need_dash = my_hp < Cfg::CI_DASH_HP * my_max;
+        if (!need_dash && me.can_cast())
+            for (const auto& ab : me.abilities())
+                if (ab.is_attack_reset() && ab.is_ready()) {
+                    try {
+                        if (e.is_alive() && e.is_visible() && ab.use() && me.can_attack()) me.attack(e);
+                    } catch (...) {
+                    }
+                    break;
+                }
+        return acted;
+    }
+    if (kind != bc::champion_type::cassi || !me.can_cast()) return false;
+    if (fight_enemies(true)) return true;  // a kill first
+    if (!me.can_cast()) return false;
+    for (const auto& ab : me.abilities()) {
+        if (!ab.is_ready() || !ab.is_cc() || ab.is_damage() || ab.is_aoe_damage()) continue;  // the walk-compatible stun
+        const auto tiles = ab.valid_tiles();
+        const Foe* near = nullptr;
+        for (const auto& f : foes)
+            if (f.weight >= 1.f && f.type != static_cast<int>(bc::champion_type::marcella) && tiles.is_set(f.pos)
+                && (!near || cheb(f.pos, pos) < cheb(near->pos, pos)))
+                near = &f;
+        if (!near) break;
+        try {
+            const auto& e = enemies[static_cast<std::size_t>(near->index)];
+            if (e.is_alive() && e.is_visible() && ab.use(e)) acted = true;
+        } catch (...) {
+        }
+        break;
+    }
+    return acted;
+}
+
+// CI_REGROUP, every turn before the retreat check: raise or clear this half's distress bit (bit 7 of its claim byte).
+void Bot::ci_flag_distress() {
+    bool threatened = false;
+    for (const auto& f : foes)
+        if (f.weight >= 1.f && cheb(f.pos, pos) <= 6 && !(Cfg::CONVERGE_FIX && enemy_spawn.is_set(f.pos))) threatened = true;
+    threatened = threatened && (outmatched || my_hp < Cfg::CI_DISTRESS_HP * my_max);
+    if (threatened == ci_distress) return;
+    ci_distress = threatened;
+    const std::uint8_t v = static_cast<std::uint8_t>((mem[Mem::CLAIMS + body] & 0x7F) | (threatened ? 0x80 : 0));
+    mem[Mem::CLAIMS + body] = v;
+    bc::shared_memory.write(static_cast<std::size_t>(Mem::CLAIMS + body), std::span<const std::byte>{reinterpret_cast<const std::byte*>(&v), 1});
+}
+
+// CI_REGROUP: when the partner is in distress and we are healthy, go to it and fight (its death is ours).
+bool Bot::ci_regroup() {
+    if (ci_distress || my_hp < 0.5f * my_max) return false;
+    if (!(mem[Mem::CLAIMS + partner_body] & 0x80)) return false;
+    vec2 at{};
+    bool visible = false;
+    if (!ci_partner_anchor(at, visible) || cheb(at, pos) > Cfg::CI_REGROUP_R) return false;
+    auto& me = bc::self();
+    const vec2 from = pos;
+    if (!foes.empty()) fight_enemies();
+    if (me.can_move() && cheb(at, pos) > 2) move_to(square(at, 2) & ~terrain);
+    if (!acted_attack && !foes.empty()) fight_enemies();
+    return acted_attack || pos != from;
+}
+
 bool Bot::try_lock_altar() {
     auto& me = bc::self();
     auto& lock = me.consumables()[bc::consumable_type::altar_lock];
@@ -2042,6 +2164,8 @@ bool Bot::retreat_if_hurt() {
     bool hunted = false;
     for (const auto& f : foes) hunted = hunted || cheb(f.pos, pos) <= 5;
     if (hunted) {
+        if constexpr (Cfg::CI_FREE_HITS)
+            if (paired) ci_free_hits();
         if (!escape() && !fight_enemies()) step_away(enemy_pos);
         return true;
     }
@@ -2462,8 +2586,15 @@ void Bot::play_turn() {
     g_stage = "threat";
     assess_threat();
     note_invaders();
+    if constexpr (Cfg::CI_REGROUP)
+        if (paired) ci_flag_distress();
     g_stage = "retreat";
     if (retreat_if_hurt()) return;
+    if constexpr (Cfg::CI_REGROUP)
+        if (paired) {
+            g_stage = "regroup";
+            if (ci_regroup()) return;
+        }
     if constexpr (Cfg::HEART_GUARD) {
         g_stage = "guard";
         if (kind == bc::champion_type::heart_of_ruin && heart_guard()) return;
@@ -2485,6 +2616,8 @@ void Bot::play_turn() {
             if (Cfg::ESCAPE_BANK_EMBARGO > 0 && me.gem_count() > 0)
                 bank_blocked_until = std::max(bank_blocked_until, round + Cfg::ESCAPE_BANK_EMBARGO);
             fight_enemies(ranged);  // melee strikes then walks; ranged only for a kill
+            if constexpr (Cfg::CI_FREE_HITS)
+                if (paired) ci_free_hits();
             std::erase_if(foes, [&](const Foe& f) {
                 const auto& e = enemies[static_cast<std::size_t>(f.index)];
                 return !e.is_visible() || !e.is_alive();
