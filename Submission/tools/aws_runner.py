@@ -4,10 +4,16 @@
 usage (from Submission/, after `aws login`):
   python3 tools/aws_runner.py ab VARIANT BASE OPP[,OPP...] [sprt args]   # up + sync + build + sprt + pull + down
   python3 tools/aws_runner.py batch FILE [--keep]   # FILE: one "VARIANT BASE OPPS [sprt args]" per line (# comments)
-  python3 tools/aws_runner.py up | sync | build BOT... | sprt ARGS... | pull [--replays] | ssh CMD | status | down
+  python3 tools/aws_runner.py up | sync | build BOT... | sprt ARGS... | pull [BOT...] [--full|--replays] | ssh CMD | status | down
 
 - Results land in the local sprt cache ($TMPDIR/kessoku_sprt, per bot source hash), so tools/sprt.py and the analysis
   scripts read them as if the games had run locally (re-running sprt.py locally then only prints the verdict).
+- `pull` brings back SLIM per-game JSONs in one compressed archive (2026-10-30: pulling the full 0.5-1 MB statistics files,
+  3.5 GB for 1,960 paired games, stalled for an hour on a home connection). Slim files keep match, teams, champions,
+  diagnostics, roster, the event kinds the tools read (death, kill, assist, campClear, gemCollection, gemLoss,
+  gemSubmission, fuelExhausted, botFault, resignation) and the earnedGold/collectedGems/submittedGems/gold champion
+  timelines; they drop heatmaps, ward/item/consumable events and the other timelines. `pull --full` keeps everything
+  (only for a few games); `pull --replays` also brings the replays. Only results of this run's bots are pulled.
 - `ab` and `batch` terminate the instance at the end, also on errors or Ctrl-C; pass --keep to leave it up for more runs
   (then `down` when done). Every instance also powers itself off (= terminates) after MAX_MINUTES (default 120).
 - The instance installs the same cambc version as this machine, so both play the same engine; without a Linux wheel
@@ -204,12 +210,51 @@ def sprt(args):
     print(out.strip().splitlines()[-1] if out.strip() else '(no output)', flush=True)
 
 
-def pull(replays=False):
+SLIM_PY = r'''
+import json, os, sys
+KEEP_EVENTS = {'death', 'kill', 'assist', 'campClear', 'gemCollection', 'gemLoss', 'gemSubmission', 'fuelExhausted',
+               'botFault', 'resignation'}
+KEEP_TL = {'earnedGold', 'collectedGems', 'submittedGems', 'gold'}
+src, dst = '/tmp/kessoku_sprt', '/tmp/kessoku_slim'
+n = 0
+for d in os.listdir(src):
+    if not os.path.isdir(os.path.join(src, d)) or (sys.argv[1:] and d.rsplit('-', 1)[0] not in sys.argv[1:]):
+        continue
+    os.makedirs(os.path.join(dst, d), exist_ok=True)
+    for f in os.listdir(os.path.join(src, d)):
+        if not f.endswith('.json'):
+            continue
+        try:
+            j = json.load(open(os.path.join(src, d, f)))
+        except Exception:
+            continue
+        j.pop('heatmaps', None)
+        j['events'] = [e for e in j.get('events', []) if e.get('kind') in KEEP_EVENTS]
+        j['championTimelines'] = [c for c in j.get('championTimelines', []) if c.get('metric') in KEEP_TL]
+        json.dump(j, open(os.path.join(dst, d, f), 'w'), separators=(',', ':'))
+        n += 1
+print(n)
+'''
+
+
+def pull(replays=False, full=False, bots=()):
+    ensure_key_and_group()  # this machine's IP may have changed since `up` (e.g. a restarted session): reopen SSH first
     ip = load_state()['ip']
     os.makedirs(CACHE, exist_ok=True)
-    flt = [] if replays else ['--include', '*/', '--include', '*.json', '--exclude', '*']
-    rsync(['-az', *flt, '-e', ' '.join(SSH), f'ubuntu@{ip}:/tmp/kessoku_sprt/', f'{CACHE}/'])
-    log(f'results pulled into {CACHE}')
+    if replays or full:
+        flt = [] if replays else ['--include', '*/', '--include', '*.json', '--exclude', '*']
+        rsync(['-az', *flt, '-e', ' '.join(SSH), f'ubuntu@{ip}:/tmp/kessoku_sprt/', f'{CACHE}/'])
+        log(f'full results pulled into {CACHE}')
+        return
+    ssh(f"rm -rf /tmp/kessoku_slim /tmp/kessoku_slim.tgz && cat > /tmp/slim.py <<'EOF'\n{SLIM_PY}\nEOF")
+    n = ssh(f'python3 /tmp/slim.py {" ".join(map(shlex.quote, sorted(set(bots))))} && '
+            'tar czf /tmp/kessoku_slim.tgz -C /tmp/kessoku_slim . && du -m /tmp/kessoku_slim.tgz | cut -f1', capture=True).split()
+    log(f'slimmed {n[0]} games into {n[-1]} MB')
+    local = os.path.join(tempfile.gettempdir(), 'kessoku_slim.tgz')
+    rsync(['-a', '--partial', '-e', ' '.join(SSH), f'ubuntu@{ip}:/tmp/kessoku_slim.tgz', local])
+    subprocess.run(['tar', 'xzf', local, '-C', CACHE], check=True)
+    os.remove(local)
+    log(f'slim results pulled into {CACHE}')
 
 
 def down():
@@ -243,7 +288,15 @@ def run_lines(lines, keep):
         build([x for la in lines for x in bots_of(la)])
         for la in lines:
             sprt(la)
-        pull()
+        for k in range(3):  # the games are paid for: never terminate before the results are home
+            try:
+                pull(bots=[x for la in lines for x in bots_of(la)])
+                break
+            except SystemExit as e:
+                log(f'pull failed ({str(e)[:300]}), retry {k + 1} of 3')
+                if k == 2:
+                    raise
+                time.sleep(20)
     finally:
         if not keep:
             down()
@@ -266,7 +319,7 @@ def main():
     elif cmd == 'sync': sync()
     elif cmd == 'build': build(rest)
     elif cmd == 'sprt': sprt(rest)
-    elif cmd == 'pull': pull('--replays' in rest)
+    elif cmd == 'pull': pull('--replays' in rest, '--full' in rest, [x for x in rest if not x.startswith('--')])
     elif cmd == 'ssh': ssh(f'{REMOTE_ENV}; {" ".join(rest)}')
     elif cmd == 'status': status()
     elif cmd == 'down': down()

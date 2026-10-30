@@ -1,0 +1,197 @@
+================================================================================
+PHASE 0: BENCHMARK, PROXY BOT AND GATES (refined 2026-10-30)
+================================================================================
+Original version: ~/Downloads/phase_0_benchmark_and_proxy_plan.txt.
+Code references are to Submission/bots/v81/src (the live bot, ladder v51).
+
+
+0. THE WHOLE PLAN ON ONE PAGE
+--------------------------------------------------------------------------------
+Goal: move from our draft (C&I > Vesper > Tavi > Willow > Varg) toward Fish's
+(Vesper, Heart of Ruin, Vendetta, C&I, Marcella) ONE DRAFT SLOT AT A TIME. Each
+step is tuned until it is level or better, or it is dropped.
+
+What our own history says (Research.md section 6):
+  * Ladder gains came from a draft change that added a farming body (v65
+    CI_DRAFT) and from fight targeting (v81 COUNTER_DIVE). v81 passed with a
+    clearly positive focused fight test, a level full pool and a level zhunt,
+    so "level on the full pool" is enough. A full-pool gain is not required.
+  * The bruiser draft failed four times when switched in all at once: META_DRAFT
+    600 vs 674, v69mel 603 vs 674, MARCELLA_OPENER +61 -108, BRUISER_PRESET
+    +42 -132. It lost even against the farming bots (zpoke +2 -19, zmeta +1 -10),
+    so the cost is partly ECONOMY, not only fights. Going one slot at a time
+    shows which pick carries that cost.
+  * Some fixes were already tried and did NOT rescue the draft:
+      - HEART_LOWHP (Heart fights down to 12% HP)
+      - MARC_CAPTURE (Marcella tributed 280 gems and earned 2,028 gold a game)
+      - Heart Focus build and all-champion pairing (BRUISER_PRESET)
+      - BUDDY pairing (+7 -24), ESCAPE_SUPPORT (+8 -13), set_priority (C8)
+    The refined phases do not repeat them unless something new is added.
+
+Order of work (each step is one Cfg:: switch in bots/v82 = copy of v81):
+  Phase 0  build and calibrate zfish, then freeze it; agree the gates below
+  Phase 3B shield trigger at camp reach (independent of the draft; cheap)
+  Phase 2A Willow -> Vendetta on 4/5-champion maps   (no new champion code)
+  Phase 2B Vendetta at pick 3 on 3-champion maps      (disjoint maps from 2A)
+  Phase 1  Heart / Marcella prep (only before they enter the draft)
+  Phase 2C slot 5 on 5-champion maps: Marcella, then Heart
+  Phase 2D Tavi -> Heart at slot 4
+  Phase 3A/3C/3D only as tuning knobs where a step points to them
+
+2A and 2B change disjoint map sets (4/5-champion vs 3-champion maps), so they
+can be tested at the same time and combined without interaction.
+
+
+1. WHY THE LOCAL POOL IS NOT ENOUGH (verified on the v81 sprt cache)
+--------------------------------------------------------------------------------
+v81 vs each local bot (140 games each):
+
+  Bot    | v81 wins | deaths (us / them)
+  -------+----------+-------------------
+  zci    |   58%    | 12.3 / 20.5
+  zgank  |   80%    | 11.3 / 15.0
+  zstack |   80%    | 10.9 / 15.0
+  zmarc  |   83%    | 13.6 / 18.7
+  zhunt  |   74%    | 10.7 / 12.7
+  rest   |  83-100% |
+
+That is about 86% overall, against ~50% on the ladder. In ladder losses the
+death ratio is the reverse: 23.2 ours vs 4.8 theirs. Local farming metrics
+(gold@300, clears) do measure well (Research.md section 8); local fight
+outcomes do not.
+
+
+2. zfish: A FROZEN LADDER-PROXY OPPONENT
+--------------------------------------------------------------------------------
+Base it on bots/zhunt, NOT on v81:
+  * zhunt already drafts the top-10 core (Vesper, Marcella, Vendetta, Heart,
+    Ryth, Tavi) and adds hunt() 2-on-1 pick-offs, RAID and HELP_CALLS. Even so,
+    v81 still beats it 74%.
+  * A v81 clone with Fish's draft would be weaker still: every bruiser draft on
+    our engine lost to the pool.
+
+Build bots/zfish = copy of bots/zhunt plus:
+  A. Draft: forced order Vesper, Heart of Ruin, Vendetta, Cassi & Issac,
+     Marcella. This is a list loop like zhunt's, with try/catch per pick. It
+     gives:
+       3 champions: Vesper / Heart / Vendetta  (top-10's most common 3-pick)
+       4 champions: + C&I                      (top-10 65% over 122)
+       5 champions: + Marcella                 (Fish's draft, 79% over 89)
+  B. Phase 1 champion code (H1-H5, M1, M2 from phase 1), compiled in for
+     zfish. It is an opponent, so it may carry anything that makes it
+     stronger; no identity check is needed for it.
+  C. Top-10 item lines (Observations.md section 8):
+       Heart    Jungle Focus,    then Bruiser Health stacked
+       Marcella Jungle Strength, then Bruiser Health
+       Vendetta Jungle Strength, then Bruiser Health
+
+Calibration, before zfish is used as a gate:
+  1. Run v81 vs zfish on 70 maps x 2 sides (140 games). Also try 2-3 zfish
+     variants (with/without B, with/without C, HUNT_EDGE 1.0/1.2).
+  2. Keep the variant v81 beats LEAST, as long as it is a real game (v81 wins
+     <= ~70%). If no variant is harder than zhunt (74%), zfish still adds
+     C&I-bruiser coverage, but say so in Research.md and do not weight it
+     above zhunt.
+  3. Realism check against Fish's ladder rows (tools/data/ladder/
+     top10_rows.json): gold@100/300, clears, tributes x bag, deaths. Record
+     these numbers; do not tune zfish to chase them.
+  4. FREEZE zfish: note its source hash in Research.md and never copy
+     candidate code into it later. Otherwise Step 2D (whose draft equals
+     zfish's) becomes a mirror match, and CLAUDE.md rules out mirror-only
+     acceptance.
+
+
+3. GATES FOR EVERY STEP
+--------------------------------------------------------------------------------
+G0 Identity (unchanged, CLAUDE.md section 4.1).
+   With the switch off, bots/v82 == v81: same SUMMARY lines on the 7-map ab.py
+   set vs v81 and v65.
+   Draft steps also get a free in-run identity check: a step that only changes
+   4/5-champion maps must leave every 3-champion game identical (and vice
+   versa). Look at those games first.
+
+G1 Focused (step-specific maps).
+   The step's target maps (the 3-, 4- or 5-champion map list in phase 2) x the
+   bruiser suite (zstack, zgank, zmarc, zhunt, zfish) x 2 sides.
+   Pass: wins gained >= wins lost.
+
+G2 Bruiser suite, all 70 maps x 2 sides x 5 bots = 700 paired games.
+   Primary signal. Pass, all three:
+     * + >= -;
+     * zhunt + zfish together not clearly worse (net >= -2*sqrt(discordant));
+     * deaths per game over ALL paired games not higher. Do not use "deaths in
+       losses": the variant changes which games are losses, so that number is
+       biased.
+   Also report gold@300, clears by r400 and deaths per champion
+   (tools/analysis/thr.py and the sprt cache JSONs).
+
+G3 Full pool non-regression (unchanged rule, kept as a guard).
+   12 opponents x 70 maps x 2 sides = 1,680 paired games.
+   Pass: net >= -2*sqrt(discordant).
+   Why keep it: it caught v63, BUDDY, ISO_STEP and EARLY_BANK. v81 passed it
+   (-12 vs a -27 bound), so it does not block real ladder gains.
+   Sub-check: the race maps (00rows, 00galaxy, 00split, 01big_world) plus
+   adgato_gemcombat1-5, over all 13 opponents, with the same -2*sqrt bound.
+   This sub-check replaces the fixed "net >= -2", which is too strict at
+   ~200 games.
+
+G4 Real opponents (user step, unchanged).
+   The user uploads. Panel A (diagnostic only), then Panel B (held out:
+   accept/reject). Then 100+ ranked games with tools/ladder_compare.py, also
+   split by team size (3/4/5 champions), because each draft step targets one
+   size.
+   v65 baseline by size (412 games): 3 champs 45% (62), 4 champs 59% (104),
+   5 champs 50% (246).
+
+Cost: G1 + G2 + G3 + zhunt ~ 2,600 games ~ a few minutes on the AWS runner.
+
+
+4. GUARDING "TUNE UNTIL POSITIVE" AGAINST NOISE
+--------------------------------------------------------------------------------
+Trying many variants of one step and keeping the best finds noise: with ~100
+discordant games the noise is +-10, so the best of 5 null variants looks about
++10 by luck. So:
+  * Write the variants of a step (at most 4) into Research.md BEFORE running
+    them.
+  * Tune on the DEV half of the maps: the alphabetically odd-indexed maps of
+    tools/data/pool.txt.
+  * Confirm the chosen variant on the other half, the HOLD half (G1/G2
+    restricted to those maps), then run G3 on everything.
+  * A variant that only wins on the DEV half is rejected.
+  * Matches are deterministic, so a "re-run" adds no evidence. Only new maps,
+    new opponents or the ladder do.
+
+
+5. PROTOCOL CHANGE
+--------------------------------------------------------------------------------
+G2 and the anti-noise rule add to CLAUDE.md section 4; they do not replace it.
+DONE 2026-10-30 (user approved): CLAUDE.md section 4 has step 3b and the race/adgato sub-check. Originally: after the user agrees, update CLAUDE.md section 4 and record the zfish
+calibration in Research.md (section 6 table). Do not create new .md files.
+
+
+6. RESULT (2026-10-30)
+--------------------------------------------------------------------------------
+Probe: Heart's champion::strength() stays 30 at any HP; the dash's
+damage_amount() scales with the passive (150 -> 162 at 84% HP). So H2
+(passive on basic attacks) is needed, and H1 can use damage_amount() as is.
+
+Each variant played v81 on 70 maps x 2 sides (paired against zhunt):
+
+  Variant                       v81 wins   Paired result
+  zhunt (reference)             74%
+  zfa  draft only               73%
+  zfb  + Heart/Marcella prep    73%        vs zfa  +15 -15
+  zfc  + top-10 item lines      66%        vs zfb  +20 -11, vs zhunt +28 -18
+  zfd  + HUNT_EDGE 1.0          68%        vs zfc  +15 -17
+
+zfc is FROZEN as bots/zfish (source hash e1e9a323c8e8, cambc 4.0.0).
+
+Realism vs Fish's ladder games:
+  * gold@300 836 vs Fish's 1,465
+  * deaths 16.8 vs Fish's 11.0
+zfish is a harder fight proxy than zhunt, but not a farming proxy.
+
+Lesson for Phase 1: on our engine the item lines matter (H5/M2/V1), while the
+estimate fixes (H1-H4, M1) changed nothing measurable. When a draft step
+brings in Heart/Marcella/Vendetta, test the item line first.
+Recorded in Research.md section 6 and CLAUDE.md section 5.

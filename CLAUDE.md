@@ -29,7 +29,8 @@ lifetime gold, then kills.
 
 | Bot (in `Submission/bots/`) | Status |
 |---|---|
-| `v81` | **Live (ladder v51) since 2026-10-30T04:41 UTC.** v80 + COUNTER_DIVE (S3) + DIR_GHOSTS (S4a). vs v80: focused fight +15 -4, full pool +85 -97 (pass), zhunt +17 -17; panels 13/20 and 11/20 (v80 14 and 10, v71 11 and 11). Judge on 100+ ranked games. `kessoku.zip` = v81. |
+| `v81` | **Live (ladder v51) since 2026-10-30T04:41 UTC.** v80 + COUNTER_DIVE (S3) + DIR_GHOSTS (S4a). vs v80: focused fight +15 -4, full pool +85 -97 (pass), zhunt +17 -17; panels 13/20 and 11/20 (v80 14 and 10, v71 11 and 11). Judge on 100+ ranked games. `kessoku.zip` = v82 candidate since 2026-10-30 (v81 in `kessoku_v81_backup.zip`). |
+| `v82` | **Candidate, bundled as `kessoku.zip` 2026-10-30 (not yet uploaded; `kessoku_v81_backup.zip` = v81).** v81 + RANGE_PRESSURE (3B: shield at camp reach; all gates pass, noise-level) + Marcella in slot 5 on 5-champion maps (`SLOT5 = 2`, `MARC_CAPTURE2`, `BRUISER_ITEMS2`; replaces Varg, Willow kept): bruiser suite +53 -46, full +74 -73, DEV +28 -22 / HOLD +25 -24, gold@300 on 5-champion maps 1,342 vs 1,279. Draft: 3 champs C&I/Vesper/Tavi, 4 + Willow, 5 + Marcella. Off switches kept: S2A/S2B (2A rejected, 2B open), HOR_PREP (for step 2D). |
 | `v80` | Rollback for v81 (`kessoku_v80_backup.zip`; ladder v50, 04:11-04:41 UTC). v71 + fuel cleanup (HELP_CALLS deleted so byte 7 is PAIRING's alone, tour-planner leftovers removed, trace counters trace-only; fuel-suspended turns 55 -> 44 a game) + GEM_MAP_GUARD (S5b: on maps with no camp gold, own-half preference and pairing for every champion; adgato +19 -11 vs v71). Panels 14/20 and 10/20. |
 | `v77g` | v71 + GEM_MAP_GUARD (S5b) alone (ladder v49, 03:25-04:11 UTC only); panels 11/20 and 12/20. Kept as S5b's reference source. |
 | `v71` | v65 with dead shop/draft code removed, bit-identical to v65 (1,820 games); ladder v46, panels 11/20 and 11/20. Last long-run baseline (`kessoku_v71_backup.zip`). |
@@ -68,6 +69,16 @@ Every candidate change is a `Cfg::` switch (`inline constexpr bool X = false;` i
    (`--max 1680 --alpha 1e-9 --beta 1e-9`). Passes unless clearly worse: **net (+ minus −) ≥ −2·√(+ plus −)**. Also run
    the candidate vs `zhunt` (140 games). Useful extra breakdown: bruiser bots (zstack/zgank/zmarc/zhunt) and pure race
    maps (00rows/00galaxy/00split).
+   Sub-check (added 2026-10-30): race maps `00rows,00galaxy,00split,01big_world` + `adgato_gemcombat1-5` over all 13
+   opponents, same −2·√ bound.
+3b. **Bruiser suite (added 2026-10-30, primary local signal).** 70 maps × both sides × `zstack,zgank,zmarc,zhunt,zfish`
+   = 700 paired games. Pass: **+ ≥ −**, zhunt + zfish together not clearly worse (−2·√ bound), and deaths per game over
+   ALL paired games not higher (not "deaths in losses": the variant changes which games are losses). Report gold@300,
+   clears and deaths per champion. On the AWS runner this is one sprt line next to the full pool (≈10–15 min for both).
+   For draft steps that touch only one map size, the other sizes must play identical games (a free identity check).
+   **Anti-noise rule** when a step has several variants: write them (max 4) into Research.md before running; choose on
+   the DEV half of the maps (odd positions in sorted `tools/data/pool.txt`), confirm on the HOLD half (even positions);
+   a variant that only wins on DEV is rejected. Matches are deterministic: re-running adds no evidence.
 4. **Real opponents (user step).** Bundle `kessoku.zip` from the candidate, back up the current zip, hand it to the user.
    After the user uploads and it is live: Panel A (diagnostic) `python3 tools/panel.py run LABEL`, then Panel B (held
    out, accept/reject) `python3 tools/panel.py --panel tools/data/panel_holdout.json run LABEL`. Panels play the LIVE
@@ -93,6 +104,7 @@ Paired results: "+" = games only the variant won, "−" = games only the base wo
 | zlock2 | altar-lock user | 98% |
 | zcamp | altar camper, never tributes | 100% |
 | **zhunt** | v65 engine + top-10 draft + `hunt()` of isolated enemies + help calls + raids | **79% (hardest; ladder-like losses)** |
+| **zfish** | zhunt + Fish draft (Vesper/Heart/Vendetta/C&I/Marcella) + top-10 item lines + Heart/Marcella prep; frozen at src hash `e1e9a323c8e8` — never copy candidate code into it | **v81 wins 66% (hardest; v81 vs zhunt 74%)** |
 
 ## 6. Commands (run from `Submission/`)
 
@@ -119,6 +131,9 @@ Environment notes:
   its pull step. AWS needs the user's credentials (`aws login`); a cloud session may not have them — then run locally
   (`tools/sprt.py`, `JOBS=8`), ~40 games per 5 min on 8 cores.
 - sprt cache: `$TMPDIR/kessoku_sprt/<bot>-<hash>/OPP_MAP_SIDE.json` (per-game summaries for breakdowns).
+- AWS pulls are slim since 2026-10-30 (~11 KB a game, one .tgz): heatmaps, ward/item events and most timelines are dropped.
+  Full JSONs for 2,000 paired games are 3.5 GB and stalled the pull for an hour; use `pull --full` only for a few games.
+  When running a batch from a tool shell, do not pipe it through `tail` (it hides progress until the end).
 - Fuel: ~100k per turn; thrown engine errors cost ~2K; `vision::camps()` ~10K with 40+ camps; prints ~3K. Exhausted
   turns are suspended (`fuelExhausted` events in the stats JSON).
 

@@ -1,0 +1,120 @@
+================================================================================
+PHASE 3: COMBAT AND POSITIONING REFINEMENTS (refined 2026-10-30)
+================================================================================
+Original version: ~/Downloads/phase_3_combat_and_positioning_refinements.txt.
+Code: Submission/bots/v81/src/bot.cpp.
+
+Status of the four original items against Research.md:
+
+  Item                     Close precedent                     Result
+  3A pre-escape support    ESCAPE_SUPPORT (shields/heals       +8 -13, fail
+                           before escaping + a stun)
+  3B camp reach            CAMP_GANK_GUARD (camp reach in      zhunt +14 -23, fail
+                           burst_at / FIT_FIGHT); the
+                           shield trigger itself is untested
+  3C melee pairing         BUDDY +7 -24; PAIR_ANYWHERE         fail / neutral / no help
+                           neutral; BRUISER_PRESET pairing
+  3D set_priority          C8 fighters first / last:           neutral to worse
+                           43 vs 47, 48 vs 47
+
+Refined order: 3B now (independent of the draft), 3A after it, 3C only as a
+draft-step knob, 3D parked. 3E is new: refit the fight model once the draft
+has two or more bruisers.
+
+
+1. 3B — SHIELD TRIGGER AT CAMP REACH   [do first, on v81]
+--------------------------------------------------------------------------------
+Rule (GameRules.md): wolves attack at range 3, elk and golems at 4, monoliths
+at 5.
+Bug (confirmed): use_support_abilities() (bot.cpp:1880) counts a camp as
+pressure only within 3 tiles. A shield-holder tanking an elk or golem from 4
+never shields.
+Switch: Cfg::RANGE_PRESSURE.
+    if (c.is_awake() && !c.is_dead() && cheb(c.position(), pos) <= (Cfg::RANGE_PRESSURE ? spec_of(c).reach : 3))
+Only the shield trigger changes; burst_at, FIT_FIGHT and escape are left
+alone. That is the difference from CAMP_GANK_GUARD, which failed against
+zhunt because it made champions flee earlier.
+Who is affected:
+  * today: Varg (slot-5 pick on all 42 five-champion maps; shield 2.5 x Focus)
+  * after 2C/2D: Heart
+Gates:
+  * G1 = the five-champion maps that have elk/golem groups, x zmeta/zgank/zmarc
+    (an economy and survival change).
+  * Then G2/G3 as usual.
+  * Report camp-caused deaths (death context != champion) and gold@300.
+Expected: small and positive, or nothing. It is cheap, so it is a good first
+run of the new gate set.
+
+
+2. 3A — SHIELD/HEAL AFTER AN ESCAPE STEP (narrowed from ESCAPE_SUPPORT)
+--------------------------------------------------------------------------------
+Why ESCAPE_SUPPORT likely failed: its walk-compatible stun on the chaser took
+the turn's single cast, and the cast went BEFORE escape(), which can block a
+dash.
+Refined: no stun, and cast only AFTER escape() has moved:
+    if (escape()) {
+        if (Cfg::ESCAPE_SHIELD) use_support_abilities();   // no-op if a dash used the cast
+        return;
+    }
+at the lethal/losing escape in play_turn (bot.cpp:2415; the one at 2430 is
+inside ISO_STEP, which is off), AND in
+retreat_if_hurt()'s hunted branch (bot.cpp:1969). That branch is where most
+low-HP champions flee, and the original plan missed it.
+Casting after the step loses nothing against casting before it: enemies act
+after our turn, so the shield or heal absorbs the same hits. And it can never
+take a dash away from escape().
+Who is affected:
+  * Varg (shield), Willow (heal; gone if 2A ships), Heart (shield, once
+    drafted)
+  * Vesper, Tavi, Cassi and Issac have no shield/heal: no change for them.
+Gates:
+  * G1 = the 14 fight maps x zmarc/zgank/zhunt.
+  * Then G2/G3.
+  * Re-run once Heart is in the draft.
+Prior: low (ESCAPE_SUPPORT +8 -13). Keep it only if it is level or better.
+
+
+3. 3C — PAIRING FOR MELEE CHAMPIONS: ONLY AS A DRAFT-STEP KNOB
+--------------------------------------------------------------------------------
+The original rule (pair every melee champion on fight maps, map_mode > 0) is
+close to BUDDY (+7 -24, negative against every opponent). The all-champion
+pairing in BRUISER_PRESET did not help either.
+GEM_MAP_GUARD's +19 -11 on the adgato maps cannot be credited to pairing: it
+shipped together with OWN_HALF's x1.3.
+Narrowed use:
+  V2 VEND_PAIR (Step 2A knob)
+      Vendetta, who replaces a ranged body PAIRING used to guard, gets the
+      lone-group penalty (group_score, bot.cpp:691) while invaders_recent().
+  H/M variants
+      The same for Heart / Marcella, only if the G2 death breakdown of their
+      step shows isolated pick-offs of that champion.
+Never on race maps (RACE_SOLO measured +3 -0 for removing pairing there).
+
+
+4. 3D — set_priority(): PARKED
+--------------------------------------------------------------------------------
+* C8 (fighters first / fighters last) was neutral to worse.
+* A priority set this round only takes effect next round, so the conditions
+  in the original sketch (carrier near enemies, low HP) act one round late.
+* Turns alternate team by team (A1 B1 A2 B2 ...; the starting team swaps each
+  round). Priority only reorders our own bodies within that sequence.
+If it is revisited, test one rule only: a carrier with >= 20 gems and an enemy
+in sight takes the top priority. Gates G1 = 14 fight maps, then G2/G3.
+
+
+5. 3E (NEW) — REFIT THE FIGHT MODEL FOR A BRUISER DRAFT   [after 2C or 2D]
+--------------------------------------------------------------------------------
+FIT_FIGHT (common.h, the 12-feature logistic "P(we die within 8 rounds)" at
+threshold 0.20) was fitted on v30's ranged-draft skirmishes against
+zgank/zdive0/zpoke. With 2-3 melee bruisers its "outmatched" call may be
+wrong in both directions: they flee fights they would win, or stay in fights
+they would lose. Research.md section 8 lists "a real fight-outcome model" as
+the main untried structural idea.
+Plan:
+  1. Log the same 12 features plus the outcome from v82 games (with the
+     accepted draft steps on) against the G2 bruiser suite.
+  2. Refit; compare test AUC with the old weights on the same rows.
+  3. A/B the new weights as Cfg::FIT_V2 at threshold 0.20. Do NOT sweep
+     thresholds: 0.025, 0.043 and 0.35 all failed before.
+Gates: G1 = 14 fight maps x zmarc/zgank/zhunt/zfish, then G2/G3/G4.
+Train on DEV-half maps only, so the HOLD half stays clean (phase 0 section 4).

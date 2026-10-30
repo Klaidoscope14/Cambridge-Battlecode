@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Per-game rows for the v44 (= v65) ranked games: python3 rows.py -> v44/rows.json"""
+"""Per-game rows for one version's ranked games: python3 v44_rows.py [VER] (default v44) -> ~/.cache/kessoku_ladder/VER/rows.json
+VER/list.json holds that version's ranked match list (cambc matches list entries); summaries come from ~/.cache/kessoku_ladder."""
 import os as _os
 SUB = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '../../..'))  # Submission/
-import json, os, collections
+import json, os, collections, sys
+VER = sys.argv[1] if len(sys.argv) > 1 else 'v44'
 D = os.path.expanduser('~/.cache/kessoku_ladder')
 SP = json.load(open(SUB + '/tools/data/spawns.json'))
-v = json.load(open(f'{D}/v44/list.json'))
+v = json.load(open(f'{D}/{VER}/list.json'))
 def tl(runs, r):
     t = 0; val = 0.
     for x in runs:
@@ -52,5 +54,5 @@ for m in v:
         trib=len(ev('gemSubmission', T)), otrib=len(ev('gemSubmission', O)),
         wards=len(ev('wardPlacement', T)), owards=len(ev('wardPlacement', O)),
     ))
-json.dump(rows, open(f'{D}/v44/rows.json', 'w'))
+json.dump(rows, open(f'{D}/{VER}/rows.json', 'w'))
 print(len(rows), 'rows')

@@ -1,0 +1,339 @@
+================================================================================
+PHASE 2: ONE-SLOT-AT-A-TIME DRAFT TRANSITION (refined 2026-10-30)
+================================================================================
+Original version: ~/Downloads/phase_2_incremental_draft_transition.txt.
+Code: Submission/bots/v81/src/draft.cpp (there is no draft_2.cpp).
+Picks in this file were checked by simulating v81's score() (with the Tavi
+DRAFT_SYNERGY bonus) on all 70 maps from tools/data/geo.json. Map shape there
+is computed from geo.json, so verify the real picks in the first A/B run.
+
+
+1. HOW v81 DRAFTS TODAY
+--------------------------------------------------------------------------------
+The original plan's walk-through of `opening--` is correct.
+`opening` is local, reset to 3 on every pick, and 2 on 3-champion maps
+(DRAFT3 = 2). Each loop iteration decrements it before the "already picked"
+test.
+
+  Map size   v81 draft                        v65 ladder win %
+  3 champs   C&I > Vesper > Tavi              45% (62 games)
+  4 champs   C&I > Vesper > Tavi > Willow     59% (104)
+  5 champs   ... > Willow > Varg              50% (246)
+             (Varg on 70/70 maps by score: 8.2 + 2*cluster + 0.6 Tavi
+             synergy, against Vendetta 9.0-9.4)
+
+Map lists (most common draft size in 2,500 top-10 games):
+  3 champs (12): 00anvil 00breadcrumbs 00collision 00fragment 00packs
+                 01broken_curve 01gold_rush 01the_farm 02arena 02the_pack
+                 02the_pond adgato_gemcombat1
+  4 champs (16): 00gemfight 00interlock 00oasis 00quarry 00reverse_spiral 00rows
+                 00rushbait_v2 00swirl 00the_line 00vault 01hooks 01shortcut
+                 02guardians 02stalactites adgato_gemcombat2 adgato_gemcombat3
+  5 champs (42): all other pool maps
+
+IMPORTANT: draft order is also turn order. Within a team, higher priority acts
+first, then draft order. Reordering the same champions therefore changes games
+(slightly). A step that is meant to touch one map size must leave the pick
+order of the other sizes untouched. That makes those games identical, a free
+identity check.
+
+
+2. WHAT THE ORIGINAL STEPS WOULD ACTUALLY DO (simulated)
+--------------------------------------------------------------------------------
+* Original 2A, opener list {Vesper, Tavi} (drop Willow):
+    slot 4 = Varg on 68/70 maps (not Vendetta);
+    slot 5 = Stellar on 41 maps, Vendetta on 18, Ryth on 9.
+  So "drop Willow" mostly ADDS STELLAR. The new champion is chosen by
+  score() with no plan behind it.
+* Original 2B, opener list {Vesper, Vendetta, Tavi}: also changes 4-champion
+  maps (Varg -> Vendetta) and the pick order on 5-champion maps. It is not a
+  3-champion-only change.
+* Original 2C, Marcella score 9.5: Varg scores 8.8 + 2*cluster, so Varg still
+  wins on maps with cluster > 0.35. A score tweak does not force the slot.
+* Original 2D: Heart of Ruin has no case in score() (it falls to the default,
+  0), so score() never picks it.
+Every refined step below forces its champion explicitly and keeps the other
+slots and the pick order fixed.
+
+
+3. STEP 2A — WILLOW -> VENDETTA (4- and 5-champion maps)   [do first]
+--------------------------------------------------------------------------------
+Switch: Cfg::S2A_VENDETTA. The opener list becomes {Vesper, Tavi, Vendetta}.
+  3 champs: unchanged (C&I, Vesper, Tavi). 12 maps, identical games.
+  4 champs: C&I, Vesper, Tavi, Vendetta.
+  5 champs: C&I, Vesper, Tavi, Vendetta, Varg (score() still picks Varg on
+            70/70 maps).
+Exactly one champion changes, at the same position.
+
+Why first:
+  * No new champion code; v81 already plays Vendetta.
+  * Closest precedent: MELEE_OPENER Vendetta-for-Willow on v36all won +35 -27,
+    but gold@300 fell by 70.
+  * Willow earns the least of our bodies (469 gold a game); top-10 Vendetta
+    earns 1,200.
+  * Vendetta is in 80% of top-10 drafts.
+Risks:
+  * We lose our only healer and a ranged body that PAIRING keeps next to an
+    ally; Vendetta is melee and ignores PAIRING.
+  * MARCELLA_OPENER (Marcella in the same slot) failed: +61 -108, race
+    +2 -17. That was a different champion, but the same slot.
+Gates:
+  * G1 on the 58 four- and five-champion maps.
+  * G2 and G3 on all maps (the 3-champion games must be identical).
+  * Report: gold@300, clears, and deaths of Vendetta vs the Willow she
+    replaced.
+Pre-registered tuning knobs (phase 1 section 4): V1 VEND_BUILD, V2 VEND_PAIR.
+At most these two, DEV half then HOLD half (phase 0 section 4).
+
+
+4. STEP 2B — 3-CHAMPION MAPS: C&I, VESPER, VENDETTA   [can run with 2A]
+--------------------------------------------------------------------------------
+Switch: Cfg::S2B_THREE_VENDETTA. Only when bc::draft::team_size() <= 3, the
+opener list is {Vesper, Vendetta}.
+  3 champs: C&I, Vesper, Vendetta (Tavi out).
+  4/5 champs: untouched (identical games).
+Why:
+  * Our weakest size (45%).
+  * Every common top-10 3-pick has a melee bruiser: Heart/Vendetta/Vesper 53%
+    (118), Heart/Marcella/Vesper 51% (95), Marcella/Tavi/Vendetta 55% (58).
+  * Ours is Issac plus three ranged bodies.
+Gates:
+  * G1 = 12 three-champion maps x 2 sides x bruiser suite (120 games), then
+    all 12 + zfish opponents (312).
+  * G3 is identical on the other 58 maps by construction, so only the
+    3-champion games carry signal.
+Ladder caveat: only ~15% of ranked games are 3-champion maps. 100 ranked games
+give ~15 games of evidence for 2B; ship it bundled with 2A and read its effect
+from the size split in ladder_compare.
+2A and 2B touch disjoint maps, so their effects simply add. Test them in one
+batch and combine.
+
+
+5. STEP 2C — SLOT 5 ON 5-CHAMPION MAPS: MARCELLA, THEN HEART
+--------------------------------------------------------------------------------
+Base: v82 with 2A (+2B) on. Force the slot: when team_size() >= 5 and four
+picks are already made, pick the step's champion. No score tweak.
+
+2C-1 S2C_MARCELLA: C&I, Vesper, Tavi, Vendetta, Marcella (Varg out).
+     Prep: M1 (fixed capturer tiers) and M2 (build line from the zfish
+     calibration).
+     Prior: low. MARCELLA_OPENER lost the race maps (+2 -17), and Varg is our
+     cluster splash farmer (watch clears on cluster-heavy maps).
+     The gain must come from Marcella's tribute gold and her stun-immune
+     front line.
+2C-2 S2C_HEART: C&I, Vesper, Tavi, Vendetta, Heart of Ruin (Varg out).
+     Prep: H1-H5 (phase 1).
+     No single-slot precedent; Heart has only been tested inside whole-draft
+     swaps.
+Gates:
+  * G1 = 42 five-champion maps x bruiser suite.
+  * G2 and G3 on all maps (3/4-champion games identical).
+  * Each variant is measured twice: with its prep ON and with it OFF. That
+    tells whether the prep matters.
+Keep whichever variant passes. If both pass, keep the better G2 net and test
+the other at slot 4 in 2D.
+
+
+6. STEP 2D — SLOT 4: TAVI -> HEART OF RUIN   [only if Heart was level in 2C-2]
+--------------------------------------------------------------------------------
+Switch: Cfg::S2D_HEART4. The opener list becomes {Vesper, Heart, Vendetta}.
+Heart takes Tavi's position, so the pick order of the other picks is kept.
+  4 champs: C&I, Vesper, Heart, Vendetta.
+            This is Fish's 4-pick set (top-10 65% over 122).
+  5 champs: C&I, Vesper, Heart, Vendetta + the 2C slot-5 winner.
+            With Marcella that is Fish's set (79% over 89).
+Lost with Tavi:
+  * his stun (Cassi's stun remains)
+  * field shopping
+  * the DRAFT_SYNERGY bonus (unused once slots are forced)
+Gates: G1 on the 58 four- and five-champion maps, then G2/G3/G4.
+Note: at this point our 5-pick set equals zfish's. zfish is frozen and plays
+zhunt's engine, so it is not a mirror. But do not accept on zfish alone; G2's
+other four bots and the panels decide.
+
+
+7. OPTIONAL STEP 2E — 3-CHAMPION MAPS WITHOUT C&I
+--------------------------------------------------------------------------------
+Only after 2B and Heart prep: Vesper, Heart, Vendetta (the top-10's most
+common 3-pick) against 2B's C&I, Vesper, Vendetta.
+Reason: opposing C&I teams won only 5/18 on 3-champion maps on the ladder,
+because one death there removes two of three bodies.
+Gates as 2B.
+
+
+8. STOP RULES
+--------------------------------------------------------------------------------
+* A step that is not level after its pre-registered knobs is dropped. The
+  draft stays where it is.
+* 2D needs 2C-2 (Heart) to have been at least level.
+* After each accepted step, the user uploads (G4). Ranked play over 100+
+  games, split by map size, decides whether the next step starts from it.
+  A local pass with a ladder drop means: roll back, and record the step in
+  Research.md section 6.
+
+
+9. RESULTS (2026-10-30) — 2A REJECTED, 2B OPEN
+--------------------------------------------------------------------------------
+Tests ran on AWS against v82base (v81 + 3B).
+
+Step 2A (Willow -> Vendetta):
+  * bruiser suite +66 -105
+  * full pool rejected early by the SPRT at 1,152 games, +62 -120
+  * deaths +2.7 a game, gold@300 -88
+  * worse against the farming bots too (zrush +0 -7, zmono2 +4 -10)
+Step 2B (3-champion maps): SOFT REJECT, KEPT OPEN FOR LATER
+  * 3-champion maps +23 -38 (net -15, bound -15.6)
+  * bruiser suite +15 -23
+  * full pool +14 -25 (net -11, bound -12.5): passes
+  * deaths 11.0 vs 8.0 on those maps
+  It fails level-or-better but is not clearly worse. Willow is not drafted on
+  3-champion maps, so the heal explanation below covers 2A only. Before a
+  retry, run a per-champion breakdown of the 3-champion games.
+
+Why: per champion, Vendetta out-earns Willow (1,032 vs 546 gold), but every
+ally dies more and earns less:
+  * Cassi & Issac 2.99 -> 3.63 deaths
+  * Varg 1.55 -> 2.08 deaths; gold 1,305 -> 1,084
+Willow heals 11,213 HP a game, about eleven full lives. She is our sustain,
+and her low gold made her look like the easiest slot to give up. The tuning
+knobs (Vendetta build, pairing) cannot replace the lost healing, so they were
+not run.
+
+Revised rule: KEEP WILLOW. The next Vendetta test should take Varg's slot on
+5-champion maps: a like-for-like melee swap that isolates the champion.
+The alternative is Tavi's slot.
+
+
+10. STEP 2C RESULTS (2026-10-30) — SLOT 5 ON 5-CHAMPION MAPS (Willow kept)
+--------------------------------------------------------------------------------
+Each variant ran against v82base on AWS. Only the SPRT summary lines survived:
+the per-game results were lost when the download failed and the instance was
+terminated. So there is no DEV/HOLD split or per-champion breakdown yet.
+
+  Variant (slot 5)                     Bruiser suite (700)   Full pool (1,680)
+  s5v   Vendetta, current build        +52 -62  fail         +67 -76  pass
+  s5vi  Vendetta, more Bruiser Health  +48 -62  fail         +62 -82  pass (net -20, bound -26)
+  s5m   Marcella + capturer + items    +53 -46  PASS         +74 -73  pass
+  s5h   Heart + prep + items           +56 -56  PASS (level) +80 -81  pass
+
+Marcella and Heart both pass G2 and G3. Vendetta fails G2 in both builds.
+Before choosing between Marcella and Heart, re-run s5m and s5h (with the base)
+to get the per-game data: the DEV-half choice, HOLD-half confirmation and the
+per-champion check.
+
+
+11. FUTURE TESTS FROM THE TOP-10 CONSENSUS (list only, not built yet)
+--------------------------------------------------------------------------------
+Source: 2,500 top-10 ranked games split by map size (tools/data/ladder/
+top10_rows.json). Every test keeps the rules above: one slot at a time, same
+pick order, keep Willow unless a test says otherwise, gates G0-G4.
+
+How often top-10 teams pick each champion:
+  3-champion maps: Vesper 69%, Vendetta 68%, Heart 66%, Marcella 66%, Tavi 13%,
+                   C&I 0%
+  4-champion maps: Vendetta 83%, Vesper 73%, Marcella 69%, Heart 66%, Ryth 42%,
+                   C&I 22%, Tavi 15%, Willow 7%
+  5-champion maps: Marcella 96%, Vesper 90%, Heart 89%, Vendetta 83%, Ryth 53%,
+                   Tavi 24%, Willow 16%, Varg 15%, C&I 11%
+
+F1  3-champion maps, 2B retry: Vesper + two bruisers.
+    Every common top-10 3-pick has two of Heart/Vendetta/Marcella and none
+    uses C&I:
+      Heart/Vendetta/Vesper   27%, 53% wins
+      Heart/Marcella/Vesper   22%, 51%
+      Marcella/Vendetta/Vesper 12%, 54%
+    Order:
+      (a) per-champion diagnosis of the 2B games first;
+      (b) C&I/Vesper/Heart (one swap, Tavi -> Heart, with Heart prep);
+      (c) then Vesper/Heart/Vendetta (C&I -> Vendetta: a two-slot change,
+          so test it only after (b)).
+F2  4-champion maps: Tavi -> Heart (C&I, Vesper, Heart, Willow).
+    The top-10's best 4-pick is C&I/Heart/Vendetta/Vesper (21%, 65%). We
+    already share C&I and Vesper; Willow stays. If Heart passes, try
+    Tavi -> Vendetta as the alternative in the same slot.
+F3  5-champion maps, after the 2C winner: Tavi -> Heart or Vendetta (step 2D).
+    Target shape: C&I, Vesper, Heart/Vendetta, Willow, Marcella.
+    Top-10 drafts that keep Willow with a bruiser core:
+      Heart/Marcella/Vendetta/Vesper/Willow  6%, 58% wins
+      Heart/Marcella/Prism/Vendetta/Willow  10%, 52%
+F4  5-champion maps, C&I -> Vendetta (pick 1), only after F3.
+    C&I is only 11% of top-10 5-picks. That would reach the
+    Heart/Marcella/Vendetta/Vesper/Willow shape above (58%).
+F5  Ryth as a candidate for a freed slot (53% of top-10 5-picks, 42% of
+    4-picks; in their #1 5-pick, Heart/Marcella/Ryth/Vendetta/Vesper,
+    25%, 56%).
+    Ryth has no prep in our code (area stun, attack reset, Strength from
+    bonus Health). Test it only after F3, as a variant of the same slot.
+Rule carried from 2A: never remove Willow without a sustain replacement. All
+the Willow-free top-10 drafts rely on bruiser builds and fighting we do not
+have yet.
+
+
+12. STEP 2C DECISION (2026-10-30 re-run, per-game data kept): MARCELLA ACCEPTED
+--------------------------------------------------------------------------------
+Marcella (with the capturer tiers and the top-10 item line):
+  * bruiser suite +53 -46, deaths 11.57 vs 11.74
+  * full pool +74 -73
+  * race+adgato +18 -12
+  * zhunt+zfish +25 -24
+  * DEV +28 -22, HOLD +25 -24 (bruiser suite)
+  * gold@300 on 5-champion maps 1,342 vs 1,279
+  * Marcella earns 1,726 gold a game with 1.15 deaths, against Varg's 1,305
+    with 1.55
+Heart: level overall (+56 -56), but loses the DEV half (+28 -29), so it is
+not chosen. It stays the candidate for step 2D (Tavi -> Heart).
+v82 now drafts C&I, Vesper, Tavi, Willow, Marcella on 5-champion maps.
+
+
+13. STEP 2D (Tavi -> Heart) RESULTS (2026-10-30): FAILED, ROOT CAUSE FOUND,
+    PARKED PENDING A BEHAVIOURAL FIX
+--------------------------------------------------------------------------------
+Results:
+  * 5-champion maps: bruiser +52 -79, full +72 -105
+  * 4-champion maps: bruiser +33 -54, full +50 -79
+
+Diagnosis (per champion):
+  * Heart deals ~30% less camp damage and ~35% less champion damage than the
+    Tavi it replaces.
+  * It takes 3x the camp damage and 2.3x the champion damage; it dies 2.0 vs
+    1.35 a game.
+  * Allies also die more (Tavi's ranged damage and stun are gone).
+
+Fix variants (pre-registered):
+  h1  prep + Strength line                 bruiser +68 -102
+  h2  plain Heart, Strength line           bruiser +65 -78  (best)
+  h3  plain Heart, Focus/Health line       bruiser +77 -97
+  All three are rejected early on the full pool. The fixes cut Heart's camp
+  damage taken, but not its low output or the team's extra deaths.
+
+Remaining cause: our engine plays Heart like a ranged farmer. Its value is the
+dash-stun and the low-HP damage bonus in fights, which needs Heart-specific
+fight logic: dive or peel with the dash-stun, and fight lower when allies are
+near. That is the next fix to try before dropping Heart for good.
+
+
+14. STEP 2D FIGHT-LOGIC FIXES (2026-10-30): ALL FAILED -> 2D DROPPED
+--------------------------------------------------------------------------------
+On h2 (plain Heart in Tavi's slot), each vs v82base:
+  hg    HEART_GUARD (dash-stun or shield a diver on an ally, then hold it in melee)
+        bruiser +66 -88, full rejected early
+  he    HEART_ESCORT (Heart farms next to an ally while invaders are about)
+        bruiser +62 -96, full rejected early
+  hc    HEART_CLUSTER (Heart prefers monster-free clusters x2)
+        bruiser +65 -80, full rejected early
+  hall  all three
+        bruiser +75 -104, full rejected early
+Against plain Heart (the logic alone), none passes DEV/HOLD.
+
+A trace probe shows HEART_GUARD fires 30-178 turns a game and acts every time.
+So the logic works as written; it does not turn into wins.
+
+Two rounds of fixes (7 variants) failed, so step 2D is dropped:
+  * Team damage to champions is about the same with Heart as with Tavi.
+  * Heart itself dies 2.0-2.2 times a game against Tavi's 1.35, each death a
+    kill and a 155-gem bag lost.
+Pattern across all draft tests: replacing one of our RANGED bodies with a melee
+one fails (Vendetta x3, Heart x2, the whole-draft swaps). Replacing melee with
+melee (Varg -> Marcella) works.
+Future draft tests should swap like for like, or come after the fight problem
+the ladder shows (untraded pick-offs, Cassi & Issac dying most) is improved.

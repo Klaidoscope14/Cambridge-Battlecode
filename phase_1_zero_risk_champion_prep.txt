@@ -1,0 +1,162 @@
+================================================================================
+PHASE 1: CHAMPION PREP FOR HEART OF RUIN, MARCELLA AND VENDETTA (refined 2026-10-30)
+================================================================================
+Original version: ~/Downloads/phase_1_zero_risk_champion_prep.txt.
+Code references are to Submission/bots/v81/src. There is no bot_2.cpp: the
+functions live in bot.cpp at the line numbers given below.
+
+
+1. PRINCIPLES
+--------------------------------------------------------------------------------
+* Prep code is written only when a draft step is about to use that champion:
+    Vendetta  for Step 2A / 2B
+    Marcella  for Step 2C-1
+    Heart     for Step 2C-2 / 2D
+  Prep with no draft step behind it cannot be measured.
+* Every item is its own Cfg:: switch (HOR_DPS, HOR_DASH1, ...), compiled out
+  with `if constexpr`. Check `kind` BEFORE any engine call, so that with the
+  switch ON the current roster pays no extra fuel.
+* "100% bit-identical" holds only with the switch OFF. With it ON, extra
+  comparisons can still move a fuel suspension and change a game. Run G0 with
+  the switch ON too. Expected result: identical, or different only in games
+  with fuel suspensions (tools/fuel_profile/equiv.py).
+* Already tested and failed as part of whole-draft swaps; do not re-add without
+  something new:
+    - HEART_LOWHP (fight down to 12% HP)
+    - MARC_CAPTURE
+    - the Heart Focus shop line (BRUISER_PRESET)
+* Heart's farming is not as broken as the original plan says. In v69mel
+  (meta draft, our engine) Heart earned 895 gold a game against top-10 Hearts'
+  872. Expect the Heart fixes to help through squad sizing and camp survival,
+  not to unlock farming.
+
+
+2. HEART OF RUIN (kit, GameRules.md)
+--------------------------------------------------------------------------------
+Stats: 1,000 HP, 30 Strength, 100 Focus.
+Slot 0: self-shield of 1.5 x Focus, lasts 5 turns.
+Slot 1: dash up to 2 tiles; the landing hits radius 1 for 1.5 x Focus and
+        stuns 1 turn.
+Passive: up to +50% damage, linear in missing health. Applies to basic attacks
+         and the dash landing; shields do not count as health.
+
+H1  HOR_DPS: count the dash landing in estimate_dps() (bot.cpp:568)
+    Bug (confirmed): the ability loop only adds attack resets, is_damage() and
+    is_aoe_damage(). A dash is ability_kind::dash, so the landing damage is
+    never counted.
+    Fix: use the SDK, do not hard-code 1.5. ability::damage_amount() is
+    documented as "Focus-scaled damage, including dash landing damage and
+    caster outgoing bonuses such as Heart of Ruin's passive":
+        else if (Cfg::HOR_DPS && kind == bc::champion_type::heart_of_ruin && ab.is_dash()) {
+            const float land = ab.damage_amount();      // includes the passive at current HP
+            multi += land * 2.f / 8.f;                  // dash_strike lands on 2+ camps
+            if (Cfg::HOR_DASH1) single += land / 8.f;   // single camp only with H3
+        }
+    Only count what dash_strike() will actually do. Today it needs
+    DASH_STRIKE_CAMPS = 2 hits, so the single-camp estimate gains nothing
+    unless H3 is on.
+    Other dashes (Vesper, Vendetta, Issac, Ren) have modifier 0, so H1 would be
+    inert for them anyway; the kind check is there to save fuel.
+
+H2  HOR_PASSIVE: passive on basic attacks
+    Do not use a fixed x1.20. At the 30% retreat floor the average missing
+    health during a clear is nearer 25-35%, i.e. +12-17%.
+    Use the current value: str_term *= 1 + 0.5 * (1 - hp / max_hp).
+    PROBE FIRST (one KSK_TRACE print): check whether champion::strength()
+    already includes the passive. If it does, H2 would double-count; drop it.
+
+H3  HOR_DASH1: dash-strike a single big camp
+    In cast_on_camps_unsafe() (bot.cpp:1743), Heart calls
+    dash_strike(at, 1) when an awake camp of the target group has base
+    strength >= 60 (elk 60, golem 120, monolith 200; spec_of(c).strength).
+    Gain per use: 1.5 x Focus damage, plus one skipped camp attack (60-120
+    damage not taken).
+    dash_strike() already refuses landing tiles where burst_at >= 60% of our
+    HP.
+
+H4  HOR_SHIELD_ALLOW: count the ready shield in helpers_for() (bot.cpp:632)
+    allowance += shield_amount() of slot 0, ONLY if the slot is ready. A
+    shield on cooldown protects nothing in this fight. Use
+    ability::shield_amount(), not 1.5 x Focus.
+    Keep the existing `allowance > 0` test first.
+
+H5  HOR_BUILD: item line in next_item() (bot.cpp:335)
+    Per shard, Strength gives Heart +3 damage every round. Focus gives about
+    +1.9 a round through the dash, +15 shield every 8 rounds, and more PvP
+    burst. For camp damage alone Strength is better. Top-10 Hearts buy
+    "Treasure Health > Jungle Focus > Bruiser Health" (265 games) and then
+    stack Bruiser Health.
+    Two candidates:
+      H5a  current line (Prospector on cluster maps, Jungle Strength, Bruiser
+           at PO_HEALTH_PCT 50); i.e. no switch
+      H5b  Jungle Focus, then Bruiser Health at HOR_HEALTH_PCT = 200 (two
+           Health shards per damage shard)
+    Pick the winner in the zfish calibration (phase 0), where it costs
+    nothing, then use the same line in v82.
+
+Not in the first pass:
+  - lower retreat floor (HEART_LOWHP failed)
+  - CALM_HEAL_HP change
+  Revisit only if replays of the Heart step show Heart going home with the
+  passive half-charged while not under threat.
+
+
+3. MARCELLA (kit)
+--------------------------------------------------------------------------------
+Stats: 1,200 HP, 45 Strength (+4.5 per shard), 60 Focus (+14 per shard).
+Passive: stun-immune; 2 gold per gem tributed.
+Slot 0: enhanced attack reset (the next attack stuns 1 round).
+Slot 1: 2 x Focus single-target hit, range 4, excludes walking.
+
+M1  MARC_CAPTURE2: make Marcella the capturer of gem groups
+    Bug in the original fix: capturer() (bot.cpp:1804) returns -1 whenever the
+    best score is below 100,000 (CAPTURE_BY_BAG is off). An 80,000 Marcella
+    bonus therefore NEVER takes effect.
+    Use tiers above the cutoff:
+        vesper   && g.gold >= CAPTURE_GOLD_MIN  -> 200000
+        marcella && g.gems >= MC_MIN_GEMS (15)  -> 100000
+        otherwise                               -> 0   (first come, first served)
+    hand_over() then works unchanged.
+    Expected value: gold (tiebreak and items), not wins. MARC_CAPTURE made
+    Marcella tribute 280 gems a game in v69mel without a win gain.
+
+M2  MARC_BUILD: item line
+    Strength is right for camp damage: +4.5 a round plus the reset swing,
+    against +3.5 a round from a Focus shard through the nuke. v81 already
+    gives Marcella the Strength line.
+    Top-10 Marcellas go "Treasure Health > Jungle Strength > Bruiser Health".
+    Knob: MARC_HEALTH_PCT 100 / 200 (Bruiser Health per damage shard).
+    Decide it in the zfish calibration first.
+
+DROPPED: the cast-order fix ("save the cast for the nuke") from the original
+plan. Each slot has its own 8-turn cooldown. Using the reset first delays the
+nuke by one turn; it does not lose it. The nuke also cannot be cast on a turn
+Marcella walks. The gain is close to zero and it adds a branch on every camp
+attack.
+
+
+4. VENDETTA (needed by Step 2A; v81 already drafts her in about 2% of games)
+--------------------------------------------------------------------------------
+Already handled in v81:
+  * the kill-reset passive (x1.1 in estimate_dps)
+  * the attack reset in attack_camp
+  * melee threat logic
+Her dash has no landing effect, so H1/H3 do not apply.
+
+Tuning knobs, used only if Step 2A comes out level or slightly negative:
+  V1  VEND_BUILD: Bruiser Health ratio 100 instead of 50. Top-10 Vendettas go
+      "Treasure Health > Jungle Strength > Bruiser Health" (135 games).
+  V2  VEND_PAIR: Vendetta joins PAIRING's lone-group penalty while invaders are
+      about (phase 3C narrowed to her). She replaces Willow, a ranged body
+      that PAIRING used to keep next to an ally.
+
+
+5. TEST ORDER
+--------------------------------------------------------------------------------
+1. Probe H2 (does strength() include the passive?). One trace run, no A/B.
+2. zfish calibration (phase 0) with H1-H5 and M1/M2 compiled in; choose the
+   H5 and M2 lines.
+3. In v82, each switch must pass G0 (OFF and ON) on the current roster.
+   There is no strength test until a draft step drafts the champion; then the
+   prep switches are measured together with that step (step ON, prep ON vs
+   step ON, prep OFF) on G1/G2.
