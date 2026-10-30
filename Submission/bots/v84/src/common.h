@@ -218,7 +218,19 @@ inline constexpr bool POST_ESCAPE_SUPPORT = false;  // after a successful escape
 inline constexpr bool VESPER_EARLY_DASH = false;    // Issac's early-dash rule (below CI_DASH_HP, melee chaser within 2) for Vesper
 // 4-champion maps (team_size 4) only: Marcella in Willow's (W) or Tavi's (T) opener position.
 inline constexpr bool SLOT4_MARCELLA_W = false;
-inline constexpr bool SLOT4_MARCELLA_T = false;   // Heart takes the Jungle Focus + Bruiser Health line; false: the Strength line
+inline constexpr bool SLOT4_MARCELLA_T = false;
+// Marcella trade stance (2026-10-30; top-10 ladder profile: they start 41% of engagements (we 32%), take even odds, leave
+// fights at ~0.70 HP (we 0.77); our Marcella dies alone 56% of the time, theirs 40%).
+inline constexpr bool SLOT34_MARCELLA = false;  // 3- and 4-champion maps: Marcella in Tavi's opener position
+inline constexpr bool TRADE_STAY = false;       // unpaired melee: with an ally within TS_ALLY and HP >= TS_HP, a FIT "outmatched"
+                                                // no longer disengages (a lethal burst or a lost exchange still does)
+inline constexpr bool TRADE_START = false;      // unpaired melee, not outmatched, HP >= TS_START_HP, an ally within TS_ALLY and at
+                                                // least as many bodies within 6: step at the top-priority enemy 2-3 tiles away
+inline constexpr bool MARC_ESCORT = false;      // PAIRING's lone-group penalty also applies to Marcella while invaders are about
+inline constexpr int TS_ALLY = 4;
+inline constexpr float TS_HP = 0.70f;
+inline constexpr float TS_START_HP = 0.80f;
+// Heart takes the Jungle Focus + Bruiser Health line; false: the Strength line
 inline constexpr int BI_MELEE_HEALTH_PCT = 100;
 inline constexpr bool DASH_STRIKE = true;   // aim dashes that have a landing effect at enemies/camps
 inline constexpr int DASH_STRIKE_CAMPS = 2;   // camps the landing must catch to be worth the cooldown

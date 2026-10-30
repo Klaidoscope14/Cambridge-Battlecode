@@ -726,7 +726,8 @@ float Bot::group_score(int id, int dist, int* req_out, float* value_out, float* 
                 near = cheb(groups[static_cast<std::size_t>(pg)].tiles.front(), g.tiles.front()) <= Cfg::CI_PAIR_RANGE;
             if (!near) value *= Cfg::PAIR_ALONE_MULT;
         }
-    if (!ci_paired_rule && Cfg::PAIRING && (ranged || (Cfg::GEM_MAP_GUARD && gem_only) || (Cfg::HEART_ESCORT && kind == bc::champion_type::heart_of_ruin))
+    if (!ci_paired_rule && Cfg::PAIRING && (ranged || (Cfg::GEM_MAP_GUARD && gem_only) || (Cfg::HEART_ESCORT && kind == bc::champion_type::heart_of_ruin)
+                                            || (Cfg::MARC_ESCORT && kind == bc::champion_type::marcella))
         && invaders_recent()) {  // invaders about: ranged bodies farm next to an ally
         bool company = claims > 0;
         for (const auto& m : mates)
@@ -1473,6 +1474,28 @@ bool Bot::fight_enemies(bool kills_only) {
                 bool safe = false;
                 for (auto t : goal.positions()) safe = safe || burst_at(t) < 0.5f * my_hp;
                 if (safe && move_to(goal, false)) break;
+            }
+        if constexpr (Cfg::TRADE_START)
+            if (!any && !paired && my_hp >= Cfg::TS_START_HP * my_max) {
+                bool ally = false;
+                int mine = 1, theirs = 0;
+                for (const auto& m : mates) {
+                    ally = ally || cheb(m.pos, pos) <= Cfg::TS_ALLY;
+                    mine += cheb(m.pos, pos) <= 6;
+                }
+                for (const auto& f : foes) theirs += f.weight >= 1.f && cheb(f.pos, pos) <= 6;
+                if (ally && mine >= theirs)
+                    for (const auto* f : order) {
+                        const int d = cheb(f->pos, pos);
+                        if (d < 2 || d > 3 || (Cfg::CONVERGE_FIX && enemy_spawn.is_set(f->pos))) continue;
+                        bitboard goal = square(f->pos, 1);
+                        bool safe = false;
+                        for (auto t : (square(pos, 1) & ~terrain).positions()) safe = safe || burst_at(t) < 0.5f * my_hp;
+                        if (safe && move_to(goal, false)) {
+                            any = me.attack_tiles().is_set(f->pos);
+                            break;
+                        }
+                    }
             }
         // A ranged poker (range 3) out-trades a melee farmer that ignores it: with allies
         // close and the fight in our favour, walk at it instead of eating free hits.
@@ -2611,8 +2634,15 @@ void Bot::play_turn() {
         bool bounty = false;  // far behind: a loaded enemy is worth a risky fight
         if (standing < 0)
             for (const auto& f : foes) bounty = bounty || f.gems >= Cfg::BEHIND_BOUNTY;
-        const bool losing = outmatched && !bounty
+        bool losing = outmatched && !bounty
             && (nearest <= Cfg::LOSING_RANGE || (nearest <= 6 && me.gem_count() >= static_cast<unsigned>(Cfg::THREAT_BANK_BAG)));
+        if constexpr (Cfg::TRADE_STAY)
+            if (losing && !ranged && !paired && !exchange_lost && my_hp >= Cfg::TS_HP * my_max)
+                for (const auto& m : mates)
+                    if (cheb(m.pos, pos) <= Cfg::TS_ALLY) {
+                        losing = false;  // trade: an ally is in it with us and we are still healthy
+                        break;
+                    }
         if (lethal || losing) {
             g_stage = "escape";
             if (Cfg::ESCAPE_BANK_EMBARGO > 0 && me.gem_count() > 0)

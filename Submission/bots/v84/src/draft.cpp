@@ -101,6 +101,12 @@ void play_draft() {
         } catch (...) {
         }
     }
+    if constexpr (Cfg::SLOT34_MARCELLA) {  // 3- and 4-champion maps: Marcella in Tavi's position
+        try {
+            if (bc::draft::team_size() <= 4) openers[1] = CD::marcella;
+        } catch (...) {
+        }
+    }
     if (Cfg::RANGED_META)  // patch 3.0 meta: open Vesper, Tavi, Willow
         for (auto p : openers)
             if (opening-- > 0 && std::find(ours.begin(), ours.end(), p) == ours.end()) {
