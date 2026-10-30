@@ -9,20 +9,19 @@ camp farming for gems and gold, altar tributes, and fights between champions. Fi
 
 | Path | What it is |
 |---|---|
-| `kessoku.zip` | The upload bundle for the platform (built from `Submission/bots/kessoku`). |
+| `kessoku.zip` | The upload bundle for the platform (built from the live bot folder, now `Submission/bots/v81`). `kessoku_v80_backup.zip` and `kessoku_v71_backup.zip` are rollbacks. |
 | `Submission/` | The `cambc` workspace: bots, maps, SDK (C++ only), test tools. |
-| `Submission/bots/kessoku` | The current bot source (same as `bots/v65`, ladder v44, live). |
-| `Submission/bots/v47h25` … `v61`, `v67` | Rollback / rejected versions. `bots/v70` holds tested-and-rejected fixes behind off switches. `bots/nova` is a from-scratch experiment. |
+| `Submission/bots/v81` | The live bot (ladder v51). |
+| `Submission/bots/v80`, `v77g`, `v71`, `v65` (= `kessoku`) | Rollbacks and references. Older and rejected versions were deleted on 2026-10-30 (in git history). `bots/nova` is a from-scratch experiment. |
 | `Submission/bots/z*` | Local test opponents (e.g. `zmarc` Marcella invaders, `zgank` dive, `zci` Cassi & Issac, `zstl` Stellar, `zmono2` monoliths). |
 | `Submission/tools/` | Test and analysis tools (see below). |
 | `Submission/tools/data/` | Map pool, spawn tiles and map geometry (`geo.json`) for all 70 maps; the two real-opponent panels. |
-| `Submission/SUBMIT.md` | How to build, test, bundle and submit. |
 | `Research.md` | Everything measured so far: ladder analyses, panel results, every A/B test, kept and rejected. |
 | `GameRules.md`, `BotAPICpp.md` | Game rules and the C++ bot API. |
 
 ## Bot in brief
 
-Source is in `Submission/bots/kessoku/src/`: `bot.cpp` (turn logic), `bot.h`, `draft.cpp` (draft), `common.h`
+Source is in `Submission/bots/v81/src/`: `bot.cpp` (turn logic), `bot.h`, `draft.cpp` (draft), `common.h`
 (every tunable and on/off switch, `Cfg::...`, each with a comment saying what it does and how it tested).
 
 Each turn: observe, threat check (fight model, HP-ratio guard, HP-exchange guard), retreat/escape, enemy fights and
@@ -36,9 +35,9 @@ invaders are seen.
 From `Submission/` (needs `pip install cambc==4.0.0` and `cambc login`):
 
 ```bash
-cambc build kessoku --release
-cambc run kessoku starter-cpp --map maps/00lanes.map26a --view
-rm -f ../kessoku.zip && cambc bundle kessoku --output ../kessoku.zip
+cambc build v81 --release
+cambc run v81 starter-cpp --map maps/00lanes.map26a --view
+rm -f ../kessoku.zip && cambc bundle v81 --output ../kessoku.zip
 ```
 
 After a `cambc` upgrade, delete every `bots/*/.cambc` build cache, or bots silently do nothing.
@@ -73,7 +72,13 @@ Tools (from `Submission/`):
 | v41 | v57br | + wards, Prospector, teleports, close-out, Bruiser stacking; full pool 1,383 vs 1,327 vs v39; panels 7/20, 9/20 |
 | v42 | v59ns | + NEAR_SWEEP; panels 6/20, 9/20 |
 | v43 | v61 | + MAP_MODES, TRACKING; panels 12/20, 6/20 |
-| v44 | v65 | + CI_DRAFT, MONO_AVOID; panels 11/20, 11/20 (best); 52% over 412 ranked games — **live** |
+| v44 | v65 | + CI_DRAFT, MONO_AVOID; panels 11/20, 11/20; 52% over 412 ranked games |
 | v45 | v67 | + THREAT_BANK8, RACE_SOLO, FIGHT_SIM_OUTMATCHED; panel B rejected, rolled back to v44 |
+| v46 | v71 | v65 minus dead code (identical play); panels 11/20, 11/20 |
+| v47 | v72 | + TRADE_CAUGHT; panels 9/20, 9/20, rejected |
+| v48 | v78 | + COUNTER_DIVE, DIR_GHOSTS, GEM_MAP_GUARD; panels 10/20, 10/20, rejected |
+| v49 | v77g | v71 + GEM_MAP_GUARD; panels 11/20, 12/20 (46 minutes live) |
+| v50 | v80 | v71 + fuel cleanup + GEM_MAP_GUARD; panels 14/20, 10/20 |
+| v51 | v81 | v80 + COUNTER_DIVE, DIR_GHOSTS; panels 13/20, 11/20 — **live** |
 
 Details for each version are in `Research.md`.

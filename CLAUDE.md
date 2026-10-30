@@ -1,8 +1,7 @@
 # CLAUDE.md — handoff for any agent working in this repo
 
-Read this first. It is the authoritative summary of state, rules and testing protocol (as of 2026-10-28).
-`Research.md` is the full log of every measurement; `README.md` is the human overview. Where `Submission/SUBMIT.md`
-disagrees with this file (it has stale version names), this file wins.
+Read this first. It is the authoritative summary of state, rules and testing protocol (as of 2026-10-30).
+`Research.md` is the full log of every measurement; `README.md` is the human overview.
 
 ## 1. What this is
 
@@ -15,8 +14,8 @@ lifetime gold, then kills.
 
 1. **Never upload or activate anything.** No `cambc submit`, no `cambc submissions activate`. Build the zip at the repo
    root (`kessoku.zip`) and tell the user; the user uploads, activates and rolls back.
-2. **Never change the live bot in place.** `Submission/bots/kessoku` = `Submission/bots/v65` = ladder v44 (live). Work in
-   a copy (e.g. `bots/v70`) behind `Cfg::` switches that default to off.
+2. **Never change the live bot in place.** The live bot is `Submission/bots/v81` (ladder v51). Work in a copy (e.g.
+   `bots/v82`) behind `Cfg::` switches that default to off, and bundle with `cambc bundle vNN`.
 3. **Follow the testing protocol below exactly** (the user insists on it). No nova-vs-nova or mirror-only acceptance.
 4. **No map or opponent hard-coding.** Rules must be general game features validated on the full pool.
 5. **Record every result in `Research.md`** (section 6 table "Measured and rejected", or the ladder sections). Do not
@@ -26,15 +25,16 @@ lifetime gold, then kills.
 8. AWS: always make sure no instance is left running (`aws ec2 describe-instances --filters
    Name=instance-state-name,Values=pending,running`); terminate leftovers.
 
-## 3. Current state (2026-10-28)
+## 3. Current state (2026-10-30)
 
 | Bot (in `Submission/bots/`) | Status |
 |---|---|
-| `kessoku` = `v65` | **Live (ladder v44).** v61 + CI_DRAFT (Cassi & Issac first) + MONO_AVOID. Full pool 1,471 vs v61's 1,398; panels 22/40 (best). 412 ranked games: 52%. |
-| `v70` | Switch lab on v65: ~24 review-proposed fixes, **all off == v65 (verified bit-identical)**. Every one was tested and rejected; see Research.md section 6 (rows "v70 review fixes", "v71 review part 3", "zhunt", "Review part 4"). |
-| `v71` | v65 with dead shop/draft code removed (Research.md section 6, "Dead-code cleanup"); verified bit-identical to v65 on the full pool + zhunt (1,820 games). **Live as ladder v46 since 2026-10-29**; panels 11/20 and 11/20, all 40 games identical to v65. `kessoku.zip` = v71; v65 zip backed up as `kessoku_v65_backup.zip`. |
-| `v67` | v65 + THREAT_BANK8 + RACE_SOLO + FIGHT_SIM_OUTMATCHED — rejected on panel B (ladder v45, rolled back). |
-| `v61`, `v59ns`, `v59oh`, `v58pl`, `v57br`, `v54po`, `v47h25` | Older versions / rollbacks. |
+| `v81` | **Live (ladder v51) since 2026-10-30T04:41 UTC.** v80 + COUNTER_DIVE (S3) + DIR_GHOSTS (S4a). vs v80: focused fight +15 -4, full pool +85 -97 (pass), zhunt +17 -17; panels 13/20 and 11/20 (v80 14 and 10, v71 11 and 11). Judge on 100+ ranked games. `kessoku.zip` = v81. |
+| `v80` | Rollback for v81 (`kessoku_v80_backup.zip`; ladder v50, 04:11-04:41 UTC). v71 + fuel cleanup (HELP_CALLS deleted so byte 7 is PAIRING's alone, tour-planner leftovers removed, trace counters trace-only; fuel-suspended turns 55 -> 44 a game) + GEM_MAP_GUARD (S5b: on maps with no camp gold, own-half preference and pairing for every champion; adgato +19 -11 vs v71). Panels 14/20 and 10/20. |
+| `v77g` | v71 + GEM_MAP_GUARD (S5b) alone (ladder v49, 03:25-04:11 UTC only); panels 11/20 and 12/20. Kept as S5b's reference source. |
+| `v71` | v65 with dead shop/draft code removed, bit-identical to v65 (1,820 games); ladder v46, panels 11/20 and 11/20. Last long-run baseline (`kessoku_v71_backup.zip`). |
+| `kessoku` = `v65` | Ladder v44: v61 + CI_DRAFT (Cassi & Issac first) + MONO_AVOID. Full pool 1,471 vs v61's 1,398; 412 ranked games: 52%. Kept as the long-time reference; `bots/kessoku` is no longer the live bot. |
+| deleted 2026-10-30 | v47h25, v54po, v57br, v58pl, v59ns, v59oh, v61, v67, v70, v72, v74-v79 (rollbacks, rejected versions and test copies; results in Research.md, sources in git history). |
 | `nova` | From-scratch bot (`NewStrategy.md`, `Observations.md`). Far weaker than v65 (0/12 head to head, nova vs v65 full pool 61 vs 338 wins). Accepted nova switches: ALIVE_STATE, DEAD_SHOP, MOVE_RESET, JOIN_AT, EARLY_OUT. |
 | `z*` | Local test opponents (section 5). `zhunt` (newest) is the closest to ladder behaviour. |
 | `starter-cpp`, `starter-python` | Starter bots. |
@@ -106,7 +106,7 @@ python3 tools/aws_runner.py batch FILE             # sprt lines on a 192-vCPU AW
 python3 tools/aws_runner.py ab VARIANT BASE OPPS [sprt args]   # one test; pulls per-game results
 python3 tools/panel.py run LABEL [--panel tools/data/panel_holdout.json]
 python3 tools/ladder_compare.py NAME=START_UTC ... # ladder win rates by version
-rm -f ../kessoku.zip && cambc bundle kessoku --output ../kessoku.zip
+rm -f ../kessoku.zip && cambc bundle v81 --output ../kessoku.zip   # bundle the candidate's folder (live: v81)
 ```
 
 Environment notes:
