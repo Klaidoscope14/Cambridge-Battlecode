@@ -92,6 +92,15 @@ void play_draft() {
         } catch (...) {
         }
     }
+    if constexpr (Cfg::SLOT4_MARCELLA_W || Cfg::SLOT4_MARCELLA_T) {  // 4-champion maps: Marcella in one forced slot
+        try {
+            if (bc::draft::team_size() == 4) {
+                if (Cfg::SLOT4_MARCELLA_W) openers[2] = CD::marcella;
+                if (Cfg::SLOT4_MARCELLA_T) openers[1] = CD::marcella;
+            }
+        } catch (...) {
+        }
+    }
     if (Cfg::RANGED_META)  // patch 3.0 meta: open Vesper, Tavi, Willow
         for (auto p : openers)
             if (opening-- > 0 && std::find(ours.begin(), ours.end(), p) == ours.end()) {

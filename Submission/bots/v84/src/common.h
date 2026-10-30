@@ -202,15 +202,23 @@ inline constexpr bool HEART_CLUSTER = false; // Heart scores monster-free cluste
 inline constexpr float HC_MULT = 2.0f;
 // Cassi & Issac survival (2026-10-30; v51 replays: in losses one bruiser runs down a lone, walking C&I half over ~8 rounds, and
 // the linked death costs both bodies). A partner joining costs no extra life: the halves die together anyway.
-inline constexpr bool CI_FREE_HITS = false;       // fleeing: Issac hits an adjacent chaser first; Cassi stuns the nearest chaser
+inline constexpr bool CI_FREE_HITS = true;        // fleeing: Issac hits an adjacent chaser first; Cassi stuns the nearest chaser
                                                   // (walk-compatible) unless she can kill; Issac dashes away below CI_DASH_HP
 inline constexpr float CI_DASH_HP = 0.70f;
-inline constexpr bool CI_REGROUP = true;         // a threatened half sets bit 7 of its claim byte and flees toward its partner;
+inline constexpr bool CI_REGROUP = false;         // a threatened half sets bit 7 of its claim byte and flees toward its partner;
                                                   // a healthy partner that sees the bit comes and fights
 inline constexpr float CI_DISTRESS_HP = 0.65f;
 inline constexpr int CI_REGROUP_R = 14;
 inline constexpr bool CI_PARTNER_PAIRING = false; // invaders about: both halves farm within CI_PAIR_RANGE of the partner
-inline constexpr int CI_PAIR_RANGE = 7;   // Heart takes the Jungle Focus + Bruiser Health line; false: the Strength line
+inline constexpr int CI_PAIR_RANGE = 7;
+// Retreat free actions (2026-10-30; C&I lesson: free actions while retreating win, redirecting the retreat loses).
+inline constexpr bool MELEE_FREE_HITS = false;      // every melee champion swings at an adjacent chaser before stepping away in
+                                                    // retreat_if_hurt (Marcella's enhanced reset adds a stunning second swing)
+inline constexpr bool POST_ESCAPE_SUPPORT = false;  // after a successful escape step: use_support_abilities() (Willow's heal)
+inline constexpr bool VESPER_EARLY_DASH = false;    // Issac's early-dash rule (below CI_DASH_HP, melee chaser within 2) for Vesper
+// 4-champion maps (team_size 4) only: Marcella in Willow's (W) or Tavi's (T) opener position.
+inline constexpr bool SLOT4_MARCELLA_W = false;
+inline constexpr bool SLOT4_MARCELLA_T = false;   // Heart takes the Jungle Focus + Bruiser Health line; false: the Strength line
 inline constexpr int BI_MELEE_HEALTH_PCT = 100;
 inline constexpr bool DASH_STRIKE = true;   // aim dashes that have a landing effect at enemies/camps
 inline constexpr int DASH_STRIKE_CAMPS = 2;   // camps the landing must catch to be worth the cooldown

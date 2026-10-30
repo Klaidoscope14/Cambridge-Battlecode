@@ -1358,8 +1358,9 @@ bool Bot::escape() {
 
     // Dash when walking still leaves us in kill range.
     bool early_dash = false;
-    if constexpr (Cfg::CI_FREE_HITS)
-        if (kind == bc::champion_type::issac && my_hp < Cfg::CI_DASH_HP * my_max)
+    if constexpr (Cfg::CI_FREE_HITS || Cfg::VESPER_EARLY_DASH)
+        if (((Cfg::CI_FREE_HITS && kind == bc::champion_type::issac) || (Cfg::VESPER_EARLY_DASH && kind == bc::champion_type::vesper_vale))
+            && my_hp < Cfg::CI_DASH_HP * my_max)
             for (const auto& f : foes) early_dash = early_dash || (f.weight >= 1.f && !f.ranged && cheb(f.pos, pos) <= 2);
     if ((early_dash || best_b * Cfg::LETHAL_MARGIN >= my_hp) && me.can_cast())
         for (const auto& ab : me.abilities()) {
@@ -1815,7 +1816,7 @@ bool Bot::ci_partner_anchor(vec2& at, bool& visible) const {
 bool Bot::ci_free_hits() {
     auto& me = bc::self();
     bool acted = false;
-    if (kind == bc::champion_type::issac) {
+    if (kind == bc::champion_type::issac || (Cfg::MELEE_FREE_HITS && !ranged && !paired)) {
         const Foe* adj = nullptr;
         for (const auto& f : foes)
             if (f.weight >= 1.f && cheb(f.pos, pos) <= 1 && (!adj || f.hp < adj->hp)) adj = &f;
@@ -1828,7 +1829,7 @@ bool Bot::ci_free_hits() {
         } catch (...) {
             return false;
         }
-        const bool need_dash = my_hp < Cfg::CI_DASH_HP * my_max;
+        const bool need_dash = kind == bc::champion_type::issac && my_hp < Cfg::CI_DASH_HP * my_max;
         if (!need_dash && me.can_cast())
             for (const auto& ab : me.abilities())
                 if (ab.is_attack_reset() && ab.is_ready()) {
@@ -2164,9 +2165,10 @@ bool Bot::retreat_if_hurt() {
     bool hunted = false;
     for (const auto& f : foes) hunted = hunted || cheb(f.pos, pos) <= 5;
     if (hunted) {
-        if constexpr (Cfg::CI_FREE_HITS)
-            if (paired) ci_free_hits();
+        if constexpr (Cfg::CI_FREE_HITS || Cfg::MELEE_FREE_HITS)
+            if ((Cfg::CI_FREE_HITS && paired) || (Cfg::MELEE_FREE_HITS && !ranged)) ci_free_hits();
         if (!escape() && !fight_enemies()) step_away(enemy_pos);
+        if constexpr (Cfg::POST_ESCAPE_SUPPORT) use_support_abilities();  // moves and dashes are resolved: heal / shield now
         return true;
     }
     if (!threats.empty()) {
@@ -2624,7 +2626,10 @@ void Bot::play_turn() {
             });
             burst_here = burst_at(pos);
             if (burst_here * Cfg::LETHAL_MARGIN >= my_hp || outmatched) {
-                if (escape()) return;
+                if (escape()) {
+                    if constexpr (Cfg::POST_ESCAPE_SUPPORT) use_support_abilities();
+                    return;
+                }
             }
         }
     }

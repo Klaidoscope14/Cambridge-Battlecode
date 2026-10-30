@@ -202,7 +202,7 @@ inline constexpr bool HEART_CLUSTER = false; // Heart scores monster-free cluste
 inline constexpr float HC_MULT = 2.0f;
 // Cassi & Issac survival (2026-10-30; v51 replays: in losses one bruiser runs down a lone, walking C&I half over ~8 rounds, and
 // the linked death costs both bodies). A partner joining costs no extra life: the halves die together anyway.
-inline constexpr bool CI_FREE_HITS = true;       // fleeing: Issac hits an adjacent chaser first; Cassi stuns the nearest chaser
+inline constexpr bool CI_FREE_HITS = true;        // fleeing: Issac hits an adjacent chaser first; Cassi stuns the nearest chaser
                                                   // (walk-compatible) unless she can kill; Issac dashes away below CI_DASH_HP
 inline constexpr float CI_DASH_HP = 0.70f;
 inline constexpr bool CI_REGROUP = false;         // a threatened half sets bit 7 of its claim byte and flees toward its partner;

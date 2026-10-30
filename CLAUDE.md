@@ -14,7 +14,7 @@ lifetime gold, then kills.
 
 1. **Never upload or activate anything.** No `cambc submit`, no `cambc submissions activate`. Build the zip at the repo
    root (`kessoku.zip`) and tell the user; the user uploads, activates and rolls back.
-2. **Never change the live bot in place.** The live bot is `Submission/bots/v81` (ladder v51). Work in a copy (e.g.
+2. **Never change the live bot in place.** The live bot is `Submission/bots/v83` (ladder v53, since 2026-10-30 15:12 UTC). Work in a copy (e.g.
    `bots/v82`) behind `Cfg::` switches that default to off, and bundle with `cambc bundle vNN`.
 3. **Follow the testing protocol below exactly** (the user insists on it). No nova-vs-nova or mirror-only acceptance.
 4. **No map or opponent hard-coding.** Rules must be general game features validated on the full pool.
@@ -29,8 +29,9 @@ lifetime gold, then kills.
 
 | Bot (in `Submission/bots/`) | Status |
 |---|---|
-| `v81` | **Live (ladder v51) since 2026-10-30T04:41 UTC.** v80 + COUNTER_DIVE (S3) + DIR_GHOSTS (S4a). vs v80: focused fight +15 -4, full pool +85 -97 (pass), zhunt +17 -17; panels 13/20 and 11/20 (v80 14 and 10, v71 11 and 11). Judge on 100+ ranked games. `kessoku.zip` = v82 candidate since 2026-10-30 (v81 in `kessoku_v81_backup.zip`). |
+| `v81` | **Ladder v51, 04:41-09:48 UTC 2026-10-30** (rollback zip `kessoku_v81_backup.zip`). v80 + COUNTER_DIVE (S3) + DIR_GHOSTS (S4a). vs v80: focused fight +15 -4, full pool +85 -97 (pass), zhunt +17 -17; panels 13/20 and 11/20 (v80 14 and 10, v71 11 and 11). Judge on 100+ ranked games. `kessoku.zip` = v82 candidate since 2026-10-30 (v81 in `kessoku_v81_backup.zip`). |
 | `v82` | **Candidate, bundled as `kessoku.zip` 2026-10-30 (not yet uploaded; `kessoku_v81_backup.zip` = v81).** v81 + RANGE_PRESSURE (3B: shield at camp reach; all gates pass, noise-level) + Marcella in slot 5 on 5-champion maps (`SLOT5 = 2`, `MARC_CAPTURE2`, `BRUISER_ITEMS2`; replaces Varg, Willow kept): bruiser suite +53 -46, full +74 -73, DEV +28 -22 / HOLD +25 -24, gold@300 on 5-champion maps 1,342 vs 1,279. Draft: 3 champs C&I/Vesper/Tavi, 4 + Willow, 5 + Marcella. Off switches kept: S2A/S2B (2A rejected, 2B open), HOR_PREP (for step 2D). |
+| `v83` | **Live (ladder v53) since 2026-10-30 15:12 UTC; `kessoku.zip` = v83, rollbacks `kessoku_v82_backup.zip` (v52) and `kessoku_v81_backup.zip` (v51). Panels A 13/20, B 14/20 (best ever on B; +3 -0 vs v81, +4 -0 vs v82).** v82 + `CI_FREE_HITS` (fleeing Cassi & Issac: Issac hits an adjacent chaser first, Cassi stuns the nearest chaser unless she can kill, Issac dashes away below 70% HP). vs v82base: bruiser suite +77 -45, full +89 -65, DEV/HOLD both positive, C&I pair deaths 3.26 -> 2.93. Off switches kept for the rejected/parked C&I, Heart and draft variants. |
 | `v80` | Rollback for v81 (`kessoku_v80_backup.zip`; ladder v50, 04:11-04:41 UTC). v71 + fuel cleanup (HELP_CALLS deleted so byte 7 is PAIRING's alone, tour-planner leftovers removed, trace counters trace-only; fuel-suspended turns 55 -> 44 a game) + GEM_MAP_GUARD (S5b: on maps with no camp gold, own-half preference and pairing for every champion; adgato +19 -11 vs v71). Panels 14/20 and 10/20. |
 | `v77g` | v71 + GEM_MAP_GUARD (S5b) alone (ladder v49, 03:25-04:11 UTC only); panels 11/20 and 12/20. Kept as S5b's reference source. |
 | `v71` | v65 with dead shop/draft code removed, bit-identical to v65 (1,820 games); ladder v46, panels 11/20 and 11/20. Last long-run baseline (`kessoku_v71_backup.zip`). |
