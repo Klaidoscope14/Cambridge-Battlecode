@@ -29,6 +29,8 @@ NAME = 'kessoku-runner'
 KEY = os.path.expanduser(f'~/.ssh/{NAME}.pem')
 STATE = os.path.expanduser('~/.cache/kessoku_aws.json')
 TYPES = os.environ.get('AWS_TYPES', 'c7i.48xlarge,c6a.48xlarge,c7a.48xlarge,c6i.32xlarge').split(',')
+SPOT = os.environ.get('AWS_MARKET', 'spot') != 'ondemand'  # AWS_MARKET=ondemand (with AWS_TYPES=c7i.24xlarge) while the spot quota is low
+MARKET = ['--instance-market-options', 'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}'] if SPOT else []
 MAX_MINUTES = int(os.environ.get('MAX_MINUTES', '120'))
 # The runner must play the same engine as the Mac: install the local cambc version (override with CAMBC_VERSION).
 CAMBC_VERSION = os.environ.get('CAMBC_VERSION') or subprocess.run(['cambc', '--version'], capture_output=True,
@@ -142,8 +144,7 @@ def up():
           for t in TYPES:
             r = subprocess.run(['aws', 'ec2', 'run-instances', '--region', region(), '--output', 'json', '--image-id', ami,
                                 '--instance-type', t, '--key-name', NAME, '--security-group-ids', sg,
-                                '--instance-market-options',
-                                'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}',
+                                *MARKET,
                                 '--instance-initiated-shutdown-behavior', 'terminate',
                                 '--block-device-mappings',
                                 'DeviceName=/dev/sda1,Ebs={VolumeSize=40,VolumeType=gp3,DeleteOnTermination=true}',
@@ -152,7 +153,7 @@ def up():
                                capture_output=True, text=True)
             if r.returncode == 0:
                 iid = json.loads(r.stdout)['Instances'][0]['InstanceId']
-                log(f'launched {t} spot {iid} (powers off after {MAX_MINUTES} min)')
+                log(f'launched {t} {"spot" if SPOT else "on-demand"} {iid} (powers off after {MAX_MINUTES} min)')
                 launched = True
                 break
             log(f'{t}: {r.stderr.strip().splitlines()[-1][:160]}')
